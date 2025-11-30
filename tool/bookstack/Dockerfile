@@ -65,7 +65,19 @@ COPY . .
 COPY --from=build /app/public/dist /app/public/dist
 
 # Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader
+ARG  GITHUB_TOKEN
+RUN set -eux; \
+    # 配置 GitHub Token（如果提供）
+    if [ -n "$GITHUB_TOKEN" ]; then \
+        composer config -g github-oauth.github.com $GITHUB_TOKEN; \
+    fi; \
+    # 禁用 GitHub API，使用 Packagist
+    composer config -g use-github-api false; \
+    # 增加超时时间
+    composer config -g process-timeout 3000; \
+    # 优先使用 dist 包
+    composer config -g preferred-install dist; \
+    composer install --no-dev --optimize-autoloader --prefer-dist
 
 # Set permissions for storage and cache
 RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache
