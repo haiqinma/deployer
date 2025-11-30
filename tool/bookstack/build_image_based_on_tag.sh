@@ -35,14 +35,9 @@ else
     echo " $REPO_DIR 已存在，正在拉取最新信息..."
     cd "$REPO_DIR"
     git fetch origin
+    git fetch --tags
 fi
 
-
-cd "$REPO_DIR"
-
-sed -i 's|"url": "https://codeberg.org/api/v1/repos/danb/HtmlDiff/archive/%prettyVersion%.zip"|"url": "file:///app/%prettyVersion%.zip"|g' "$COMPOSER_LOCK"
-sed -i 's|"url": "https://codeberg.org/api/v1/repos/danb/asserthtml/archive/%prettyVersion%.zip"|"url": "file:///app/%prettyVersion%.zip"|g' "$COMPOSER_LOCK"
-cp -rf ${PACKAGES}/* .
 
 index=$((index+1))
 echo -e "\n${COLOR_BLUE}step $index -- 检查指定的tag是否存在 ${COLOR_NC}"
@@ -68,6 +63,13 @@ if [ ! -f "$DOCKERFILE" ]; then
     echo -e "\n${COLOR_RED}错误：Dockerfile 不存在！路径: $DOCKERFILE ${COLOR_NC}"
     exit 1
 fi
+
+index=$((index+1))
+echo -e "\n${COLOR_BLUE}step $index -- 针对难以下载的软件包进行替换 ${COLOR_NC}"
+cd "$REPO_DIR"
+sed -i 's|"url": "https://codeberg.org/api/v1/repos/danb/HtmlDiff/archive/%prettyVersion%.zip"|"url": "file:///app/%prettyVersion%.zip"|g' "$COMPOSER_LOCK"
+sed -i 's|"url": "https://codeberg.org/api/v1/repos/danb/asserthtml/archive/%prettyVersion%.zip"|"url": "file:///app/%prettyVersion%.zip"|g' "$COMPOSER_LOCK"
+cp -rf ${PACKAGES}/* .
 
 
 index=$((index+1))
@@ -103,15 +105,16 @@ index=$((index+1))
 echo -e "\n${COLOR_BLUE}step $index -- 开始构建并推送多平台镜像 ${COLOR_NC}"
 short_tag=$(remove_v_prefix "$TAG_NAME")
 IMAGE_NAME="${DOCKERHUB_USER}/bookstack:$short_tag"
-echo "镜像名称: $IMAGE_NAME"
+echo -e "【 $(date) 】镜像名称: $IMAGE_NAME"
 docker buildx build \
-    --platform linux/amd64,linux/arm64 \
+    --platform linux/amd64 \
     --file "$DOCKERFILE" \
+    ${GITHUB_TOKEN:+--build-arg GITHUB_TOKEN=$GITHUB_TOKEN} \
     --tag "$IMAGE_NAME" \
     --push \
     "$REPO_DIR"
 
-echo "镜像构建并推送成功！可在 Docker Hub 查看: https://hub.docker.com/r/${DOCKERHUB_USER}/bookstack/tags"
+echo -e "【 $(date) 】镜像构建并推送成功！可在 Docker Hub 查看: https://hub.docker.com/r/${DOCKERHUB_USER}/bookstack/tags"
 
 index=$((index+1))
 echo -e "\n${COLOR_BLUE}step $index -- 登出 Docker Hub ${COLOR_NC}"
