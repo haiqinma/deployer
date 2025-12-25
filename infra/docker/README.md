@@ -4,18 +4,39 @@
 
 1. 设置ubuntu docker仓库：
 
-国内机器执行命令：./setup_aliyun.sh
+```shell
+# 国内机器执行命令
+./setup_aliyun.sh
 
-国外机器执行命令：./setup_ubuntu.sh
-
+# 国外机器执行命令
+./setup_ubuntu.sh
+```
 
 2. 执行安装命令进行docker安装：
 
-./install.sh
+```shell
+# ubuntu
+./install_ubuntu.sh
 
-3. 执行安装命令进行docker buildx 多平台构建器安装（如有需要）：
+# 查看docker配置
+docker info
+```
 
+3.设置docker加速镜像
+在`/etc/docker/daemon.json`文件中添加下面这行：
+```text
+{
+  ...
+  "registry-mirrors": ["https://docker.1ms.run/"],
+  ...
+}
+```
+
+4. 执行安装命令进行docker buildx 多平台构建器安装（如有需要）：
+
+```shell
 ./setup-buildx-multiarch.sh
+```
 
 # 构建镜像
 
