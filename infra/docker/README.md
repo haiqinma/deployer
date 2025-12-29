@@ -76,7 +76,9 @@ docker system prune -a
 docker system prune -a -f
 ```
 
-# 调用本地其他容器服务
+# 网络配置
+
+## 调用本地其他容器服务
 
 举例说明：
 当前服务是bookstack服务，需要引用本地postgresql服务，postgresql服务的网络名psql-network
@@ -93,6 +95,13 @@ services:
     networks:
       - psql-network
 3. 在bookstack服务中配置host时使用postgresql服务名即可，配置port时使用postgresql的内部端口；
+
+## 容器里检查是否可以访问目标
+
+```shell
+# H=1.2.3.4; P=80
+nc -vz -w3 $H $P && echo ok || echo fail
+```
 
 # 用户和用户组
 

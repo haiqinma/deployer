@@ -13,6 +13,7 @@ vi init.db/01.sql
 # 如下命令
 docker compose exec postgres psql -U postgres -d postgres -f /docker-entrypoint-initdb.d/01.sql
 ```
+
 ## 配置`.env`文件
 
 ```shell
@@ -63,6 +64,33 @@ psql -h localhost -p 5432 -U postgres -d postgres
 \o file         输出到文件
 \q              退出
 \?              帮助
+```
+
+# 安装插件
+
+```shell
+# 1. 登陆数据库
+docker compose exec postgres psql -U postgres -d postgres
+
+# 2. 创建数据库
+create database test;
+
+# 3. 切换数据库
+\c test
+
+# 4. 安装插件, 注意插件是数据库粒度，一定要确认当前所处的数据库
+# btree_gist 为标准数据类型（int、text、timestamp等）提供 GiST索引 支持，让这些类型可以使用GiST索引的高级特性。
+# 当你需要用排除约束防止数据重叠时，就需要 btree_gist，比如
+# -- 示例：会议室预订，防止时间冲突
+# CREATE TABLE bookings (
+#     room_id int,
+#     during tsrange,
+#     EXCLUDE USING gist (
+#         room_id WITH =,      -- 同一房间
+#         during WITH &&       -- 时间段不能重叠
+#     )
+# );
+create extension if not exists btree_gist;
 ```
 
 # 备份和恢复
