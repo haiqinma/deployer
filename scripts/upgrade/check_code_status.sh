@@ -69,9 +69,13 @@ for module_name in "${modules[@]}"; do
         exit 2
     fi
 
+    if ! git -C "$module_dir" checkout main >> "$LOGFILE" 2>&1; then
+        log "ERROR! git checkout main failed for ${module_name}"
+        exit 3
+    fi
     old_rev=$(git -C "$module_dir" rev-parse HEAD)
-    if ! git -C "$module_dir" pull >> "$LOGFILE" 2>&1; then
-        log "ERROR! git pull failed for ${module_name}"
+    if ! git -C "$module_dir" pull origin main >> "$LOGFILE" 2>&1; then
+        log "ERROR! git pull origin main failed for ${module_name}"
         exit 3
     fi
     new_rev=$(git -C "$module_dir" rev-parse HEAD)
