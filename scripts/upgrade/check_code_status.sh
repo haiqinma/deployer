@@ -69,16 +69,24 @@ for module_name in "${modules[@]}"; do
         exit 2
     fi
 
-    if ! git -C "$module_dir" checkout main >> "$LOGFILE" 2>&1; then
+    old_rev=$(git -C "$module_dir" rev-parse origin/main 2>/dev/null || git -C "$module_dir" rev-parse HEAD)
+    if ! git -C "$module_dir" fetch origin main >> "$LOGFILE" 2>&1; then
+        log "ERROR! git fetch origin main failed for ${module_name}"
+        exit 3
+    fi
+    if ! git -C "$module_dir" checkout -f main >> "$LOGFILE" 2>&1; then
         log "ERROR! git checkout main failed for ${module_name}"
         exit 3
     fi
-    old_rev=$(git -C "$module_dir" rev-parse HEAD)
-    if ! git -C "$module_dir" pull origin main >> "$LOGFILE" 2>&1; then
-        log "ERROR! git pull origin main failed for ${module_name}"
+    if ! git -C "$module_dir" reset --hard origin/main >> "$LOGFILE" 2>&1; then
+        log "ERROR! git reset --hard origin/main failed for ${module_name}"
         exit 3
     fi
-    new_rev=$(git -C "$module_dir" rev-parse HEAD)
+    if ! git -C "$module_dir" clean -fd >> "$LOGFILE" 2>&1; then
+        log "ERROR! git clean failed for ${module_name}"
+        exit 3
+    fi
+    new_rev=$(git -C "$module_dir" rev-parse origin/main)
 
     if [[ "$old_rev" == "$new_rev" ]]; then
         log "no update for ${module_name}"
