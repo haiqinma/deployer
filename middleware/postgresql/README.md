@@ -6,12 +6,14 @@
 # 参考 init.db.template 目录里的文件写初始化脚本
 mkdir init.db
 
-# 添加要执行的sql语句
-vi init.db/01.sql
+# 添加要执行的sql语句（注意添加时按照序号依次递增）
+vi init.db/01app-a.sql
+vi init.db/02app-b.sql
 
 # 需要说明的是，如果容器之前已经启动过，事后放入的脚本将不会执行，需要手动执行
 # 如下命令
-docker compose exec postgres psql -U postgres -d postgres -f /docker-entrypoint-initdb.d/01.sql
+docker compose exec postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /docker-entrypoint-initdb.d/01app-a.sql
+docker compose exec postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /docker-entrypoint-initdb.d/02app-b.sql
 ```
 
 ## 配置`.env`文件
@@ -20,6 +22,30 @@ docker compose exec postgres psql -U postgres -d postgres -f /docker-entrypoint-
 cp .env.template .env
 # 然后根据需要编辑 .env 文件，如果只是简单本地测试可以不用修改
 ```
+
+`.env.template` 里的 `POSTGRES_DB` 只有一个值（例如 `postgres`），它只表示容器初始化时的默认数据库，不是各业务库映射配置，也不会自动为每个 SQL 文件分配不同数据库。
+
+如果你需要 `01app-a.sql` 使用 `app_db_a`，`02app-b.sql` 使用 `app_db_b`，建议保留 `.env` 中的 `POSTGRES_DB=postgres` 作为默认库，然后在各自脚本中显式创建并切换数据库。
+
+示例：
+
+`init.db/01app-a.sql`
+
+```sql
+CREATE DATABASE app_db_a;
+\c app_db_a
+-- 这里写 app-a 的建表/初始化语句
+```
+
+`init.db/02app-b.sql`
+
+```sql
+CREATE DATABASE app_db_b;
+\c app_db_b
+-- 这里写 app-b 的建表/初始化语句
+```
+
+建议：不建议数据库名包含 `-`，推荐使用字母、数字和下划线（例如 `app_db_a`），这样在 SQL 中无需双引号，脚本更稳妥。
 
 ## 启动容器
 
@@ -30,6 +56,29 @@ docker compose up -d
 # 如果需要重启
 docker compose down -v && docker compose up -d
 
+```
+
+## 常见问题
+
+### 报错 `pq: database "app_db_a" does not exist`
+
+这通常表示容器已启动，但业务库尚未创建。最常见原因是：`/var/lib/postgresql/data` 已有旧数据，导致 `init.db` 脚本没有再次执行。
+
+```shell
+# 查看现有数据库
+docker compose exec postgres psql -U postgres -d postgres -c "\l"
+
+# 手动创建业务库（一次即可）
+docker compose exec postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c 'CREATE DATABASE app_db_a;'
+docker compose exec postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c 'CREATE DATABASE app_db_b;'
+```
+
+如果你希望重新执行初始化脚本，请清理数据卷后重建：
+
+```shell
+docker compose down -v
+rm -rf data
+docker compose up -d
 ```
 
 # 连接数据库
@@ -105,5 +154,3 @@ docker compose exec -T postgres psql -U postgres myapp < backup.sql
 # 备份所有数据库
 docker compose exec -T postgres pg_dumpall -U postgres > backup_all.sql
 ```
-
-
