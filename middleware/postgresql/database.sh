@@ -38,7 +38,7 @@ generate_password() {
 }
 
 is_valid_identifier() {
-  [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+  [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]
 }
 
 require_docker_compose() {
@@ -200,7 +200,7 @@ create_database() {
     exit 1
   fi
   if ! is_valid_identifier "${db_name}"; then
-    error "Invalid database name '${db_name}'. Use letters/numbers/underscore and start with a letter or underscore."
+    error "Invalid database name '${db_name}'. Use letters/numbers/underscore/hyphen and start with a letter or underscore."
     exit 1
   fi
 
@@ -210,7 +210,7 @@ create_database() {
     db_owner="${POSTGRES_USER}"
   fi
   if ! is_valid_identifier "${db_owner}"; then
-    error "Invalid username '${db_owner}'. Use letters/numbers/underscore and start with a letter or underscore."
+    error "Invalid username '${db_owner}'. Use letters/numbers/underscore/hyphen and start with a letter or underscore."
     exit 1
   fi
 
