@@ -10,6 +10,8 @@ source "${script_dir}/common.sh"
 
 init_log_file "upgrade-warehouse.log"
 
+env_file="${script_dir}/.env"
+
 module_name="warehouse"
 deploy_root="/opt/deploy"
 
@@ -61,23 +63,53 @@ target_dir=$(resolve_version_dir "$target_version") || {
 log "current dir: ${current_dir}"
 log "target dir: ${target_dir}"
 
-[[ -f "${current_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${current_dir}/scripts/starter.sh"; exit 1; }
-[[ -f "${target_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${target_dir}/scripts/starter.sh"; exit 1; }
-[[ -f "${current_dir}/config.yaml" ]] || { log "ERROR! missing config: ${current_dir}/config.yaml"; exit 1; }
-
-log "stop current warehouse: cd ${current_dir} && scripts/starter.sh stop"
-if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); then
-    log "ERROR! failed to stop current warehouse service"
-    exit 1
+if [[ -f "$env_file" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$env_file"
+    set +a
+else
+    WEBDAV_FLAG="all"
+    log "WARN! set WEBDAV_FLAG to 'all', Front-end and Back-end both will be upgrade"
 fi
 
-cp -f "${current_dir}/config.yaml" "${target_dir}/config.yaml"
-log "copied config: ${current_dir}/config.yaml -> ${target_dir}/config.yaml"
+WEBDAV_FLAG=$(trim "${WEBDAV_FLAG:-all}")
+case "$WEBDAV_FLAG" in
+    all|backend|frontend)
+        ;;
+    *)
+        log "ERROR! invalid WEBDAV_FLAG: ${WEBDAV_FLAG}, expected one of: all|backend|frontend"
+        exit 1
+        ;;
+esac
 
-log "start target warehouse: cd ${target_dir} && scripts/starter.sh"
-if ! (cd "$target_dir" && bash scripts/starter.sh >> "$LOGFILE" 2>&1); then
-    log "ERROR! failed to start target warehouse service"
-    exit 1
+if [[ "$WEBDAV_FLAG" == "all" || "$WEBDAV_FLAG" == "backend" ]]; then
+    [[ -f "${current_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${current_dir}/scripts/starter.sh"; exit 1; }
+    [[ -f "${target_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${target_dir}/scripts/starter.sh"; exit 1; }
+    [[ -f "${current_dir}/config.yaml" ]] || { log "ERROR! missing config: ${current_dir}/config.yaml"; exit 1; }
+
+    log "stop current warehouse: cd ${current_dir} && scripts/starter.sh stop"
+    if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); then
+        log "ERROR! failed to stop current warehouse service"
+        exit 1
+    fi
+
+    cp -f "${current_dir}/config.yaml" "${target_dir}/config.yaml"
+    log "copied config: ${current_dir}/config.yaml -> ${target_dir}/config.yaml"
+
+    log "start target warehouse: cd ${target_dir} && scripts/starter.sh"
+    if ! (cd "$target_dir" && bash scripts/starter.sh >> "$LOGFILE" 2>&1); then
+        log "ERROR! failed to start target warehouse service"
+        exit 1
+    fi
 fi
 
+if [[ "$WEBDAV_FLAG" == "all" || "$WEBDAV_FLAG" == "frontend" ]]; then
+    [[ -d "${target_dir}/web/dist" ]] || { log "ERROR! missing web dist: ${target_dir}/web/dist"; exit 1; }
+
+    log "publish target frontend: ${target_dir}/web/dist -> /usr/share/nginx/html/webdav"
+    rm -rf /usr/share/nginx/html/webdav
+    cp -r "${target_dir}/web/dist" /usr/share/nginx/html/webdav
+    systemctl restart nginx
+fi
 log "warehouse upgrade done: ${current_version} -> ${target_version}"
