@@ -283,8 +283,25 @@ for module_name in "${MODULES[@]}"; do
         output_package_names+=("$(basename "$package_path")")
     done
 
-    if ! select_latest_local_package "$module_name" "${output_package_names[@]}"; then
-        log "ERROR! failed to find valid output package for ${module_name}"
+    commit_matched_packages=()
+    for package_name in "${output_package_names[@]}"; do
+        package_stem=${package_name%.tar.gz}
+        package_rest=${package_stem#"${module_name}-v"}
+        package_commit=${package_rest##*-}
+        if [[ "$package_commit" == "$latest_commit" ]]; then
+            commit_matched_packages+=("$package_name")
+        fi
+    done
+
+    if [[ ${#commit_matched_packages[@]} -eq 0 ]]; then
+        log "ERROR! no output package with latest commit (${latest_commit}) for ${module_name}"
+        rm -f "$build_state_before"
+        overall_status=1
+        continue
+    fi
+
+    if ! select_latest_local_package "$module_name" "${commit_matched_packages[@]}"; then
+        log "ERROR! failed to find valid output package for ${module_name} with commit ${latest_commit}"
         rm -f "$build_state_before"
         overall_status=1
         continue
@@ -299,20 +316,11 @@ for module_name in "${MODULES[@]}"; do
         continue
     fi
 
-    if [[ "$SELECTED_COMMIT" != "$latest_commit" ]]; then
-        log "ERROR! built package commit (${SELECTED_COMMIT}) does not match latest code commit (${latest_commit})"
-        rm -f "$build_state_before"
-        overall_status=1
-        continue
-    fi
-
     package_hash_after=$(sha256sum "$package_file" | awk '{print $1}')
     package_hash_before=$(awk -v target="$package_filename" '$1 == target {print $2; exit}' "$build_state_before")
     rm -f "$build_state_before"
     if [[ -n "$package_hash_before" && "$package_hash_before" == "$package_hash_after" ]]; then
-        log "ERROR! no new package generated for ${module_name}: ${package_filename} unchanged after package.sh"
-        overall_status=1
-        continue
+        log "package already exists for ${module_name}: ${package_filename} (unchanged, reuse)"
     fi
 
     cp -f "$package_file" "${package_root}/${package_filename}"
