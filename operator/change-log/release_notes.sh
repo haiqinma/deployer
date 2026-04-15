@@ -1,53 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-ENV_CANDIDATES=(
-  "${RELEASE_NOTES_ENV_FILE:-}"
-  "$script_dir/release_notes.env"
-  "$script_dir/.env"
-)
-
-load_env_file() {
-  local env_file
-  for env_file in "${ENV_CANDIDATES[@]}"; do
-    [[ -n "$env_file" ]] || continue
-    if [[ -f "$env_file" ]]; then
-      # shellcheck disable=SC1090
-      source "$env_file"
-      break
-    fi
-  done
-}
-
-load_env_file
-
-TAG_GLOB="${RELEASE_NOTES_TAG_GLOB:-v[0-9]*.[0-9]*.[0-9]*}"
+# 固定配置（按当前发布流程约定）
+REPO_BASE="/root/code"
+MODULES_CONF="$script_dir/modules.conf"
+TAG_GLOB="v[0-9]*.[0-9]*.[0-9]*"
 CODEX_BIN="${RELEASE_NOTES_CODEX_BIN:-codex}"
-KEEP_RAW_INPUT="${RELEASE_NOTES_KEEP_RAW_INPUT:-false}"
-KEEP_FINAL_TMP="${RELEASE_NOTES_KEEP_FINAL_TMP:-false}"
+ARCHIVE_DIR="/opt/packages"
+KEEP_RAW_INPUT="false"
 
 usage() {
-  cat <<'EOF'
+  cat <<EOF
 用法:
-  ./scripts/release_notes.sh <旧tag> <新tag|HEAD> [最终输出文件]
-  ./scripts/release_notes.sh [最终输出文件]
-
-示例:
-  ./scripts/release_notes.sh v1.0.0 v1.1.0
-  ./scripts/release_notes.sh v1.0.0 HEAD
   ./scripts/release_notes.sh
-  ./scripts/release_notes.sh ./output/release-notes.md
+  ./scripts/release_notes.sh --module <模块名>
 
 说明:
-  1. 脚本先提取版本区间事实数据，再在脚本内调用 codex 生成最终 Markdown。
-  2. 传两个参数时，分析 <旧tag>..<新tag|HEAD>，并输出到 stdout。
-  3. 传三个参数时，第三个参数为最终 Markdown 输出文件。
-  4. 不传 tag 时，默认分析：
-     - 若 HEAD 正好是最新 semver tag，则分析“上一个 tag..最新 tag”
-     - 否则分析“最新 tag..HEAD”
+  1. 默认从 $MODULES_CONF 读取模块列表（每行一个模块，支持 # 注释）。
+  2. 每个模块仓库默认位于：$REPO_BASE/<模块名>
+  3. 版本范围默认按“上一次 tag 比较”：
+     - 若 HEAD == 最新 tag：使用 上一个tag..最新tag
+     - 否则：使用 最新tag..HEAD
+  4. 每个模块先写：/tmp/release_notes_<模块名>.md
+  5. 然后追加到：$ARCHIVE_DIR/release_notes_<模块名>.md
 EOF
 }
 
@@ -56,31 +32,51 @@ fail() {
   exit 1
 }
 
-ensure_git_repo() {
-  git -C "$root_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail "当前目录不是 Git 仓库。"
+warn() {
+  printf 'Warn: %s\n' "$*" >&2
+}
+
+trim() {
+  local v="$1"
+  v="${v#"${v%%[![:space:]]*}"}"
+  v="${v%"${v##*[![:space:]]}"}"
+  printf '%s' "$v"
+}
+
+read_modules() {
+  local conf="$1"
+  [[ -f "$conf" ]] || fail "modules.conf 不存在：$conf"
+
+  local line module
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"
+    module="$(trim "$line")"
+    [[ -n "$module" ]] || continue
+    modules+=("$module")
+  done < "$conf"
 }
 
 get_semver_tags() {
-  git -C "$root_dir" tag -l "$TAG_GLOB" | sort -V
-}
-
-ref_exists() {
-  git -C "$root_dir" rev-parse -q --verify "${1}^{commit}" >/dev/null 2>&1
+  local repo_dir="$1"
+  git -C "$repo_dir" tag -l "$TAG_GLOB" | sort -V
 }
 
 resolve_default_range() {
-  mapfile -t semver_tags < <(get_semver_tags)
+  local repo_dir="$1"
+  local latest_tag latest_tag_commit head_commit
+
+  mapfile -t semver_tags < <(get_semver_tags "$repo_dir")
   if [[ "${#semver_tags[@]}" -eq 0 ]]; then
-    fail "仓库中没有找到符合规则的 tag（TAG_GLOB=$TAG_GLOB），无法自动推断版本范围。"
+    return 1
   fi
 
   latest_tag="${semver_tags[-1]}"
-  latest_tag_commit="$(git -C "$root_dir" rev-list -n 1 "$latest_tag")"
-  head_commit="$(git -C "$root_dir" rev-parse HEAD)"
+  latest_tag_commit="$(git -C "$repo_dir" rev-list -n 1 "$latest_tag")"
+  head_commit="$(git -C "$repo_dir" rev-parse HEAD)"
 
   if [[ "$latest_tag_commit" == "$head_commit" ]]; then
     if [[ "${#semver_tags[@]}" -lt 2 ]]; then
-      fail "只有一个 tag，无法自动推断“上一个 tag..最新 tag”。请显式传入两个版本。"
+      return 1
     fi
     old_ref="${semver_tags[-2]}"
     new_ref="$latest_tag"
@@ -88,64 +84,125 @@ resolve_default_range() {
     old_ref="$latest_tag"
     new_ref="HEAD"
   fi
+  return 0
 }
 
-run_codex_compat() {
-  local raw_input_file="$1"
-  local final_output_file="$2"
-  local codex_prompt
-  local exec_supported="false"
-  local codex_log_file=""
-  local raw_payload
+build_raw_payload() {
+  local repo_dir="$1"
+  local range="$2"
+  local commit_total stats_line files_changed insertions deletions contributors_md
+  local commit_list commit_list_all changed_files
 
-  command -v "$CODEX_BIN" >/dev/null 2>&1 || fail "未找到 codex 命令，请先安装并完成登录。"
+  commit_total="$(git -C "$repo_dir" rev-list --count "$range")"
+  [[ "$commit_total" -gt 0 ]] || return 1
 
-  raw_payload="$(cat "$raw_input_file")"
+  stats_line="$(git -C "$repo_dir" diff --shortstat "$old_ref" "$new_ref" | sed 's/^ *//')"
+  files_changed="$(printf '%s\n' "$stats_line" | sed -n 's/.*\([0-9][0-9]*\) files\? changed.*/\1/p')"
+  insertions="$(printf '%s\n' "$stats_line" | sed -n 's/.*\([0-9][0-9]*\) insertions\?(+).*/\1/p')"
+  deletions="$(printf '%s\n' "$stats_line" | sed -n 's/.*\([0-9][0-9]*\) deletions\?(-).*/\1/p')"
+  files_changed="${files_changed:-0}"
+  insertions="${insertions:-0}"
+  deletions="${deletions:-0}"
+
+  contributors_md="$(git -C "$repo_dir" shortlog -sne "$range" | awk '{
+    count=$1
+    $1=""
+    sub(/^ +/, "", $0)
+    name=$0
+    sub(/ <.*$/, "", name)
+    if (name == "") name="unknown"
+    printf "- @%s (%s 次提交)\n", name, count
+  }')"
+  if [[ -z "$contributors_md" ]]; then
+    contributors_md="- 无"
+  fi
+
+  commit_list="$(git -C "$repo_dir" log --reverse --no-merges --format='- `%h` | %ad | %an | %s' --date=short "$range")"
+  if [[ -z "$commit_list" ]]; then
+    commit_list="- 无（该范围只有合并提交）"
+  fi
+
+  commit_list_all="$(git -C "$repo_dir" log --reverse --format='- `%h` | %ad | %an | %s' --date=short "$range")"
+  changed_files="$(git -C "$repo_dir" diff --name-status "$old_ref" "$new_ref" | awk '{print "- `" $1 "` " $2}')"
+  if [[ -z "$changed_files" ]]; then
+    changed_files="- 无"
+  fi
+
+  raw_report=""
+  raw_report="${raw_report}# 版本区间原始变更数据"$'\n\n'
+  raw_report="${raw_report}> 模块：\`${module_name}\`"$'\n'
+  raw_report="${raw_report}> 仓库：\`${repo_dir}\`"$'\n'
+  raw_report="${raw_report}> 版本范围：\`${old_ref}\` -> \`${new_ref}\`"$'\n'
+  raw_report="${raw_report}> 提交范围：\`${range}\`"$'\n\n'
+
+  raw_report="${raw_report}## 统计信息"$'\n'
+  raw_report="${raw_report}- 提交总数：${commit_total}"$'\n'
+  raw_report="${raw_report}- 变更文件数：${files_changed}"$'\n'
+  raw_report="${raw_report}- 代码行数变化：+${insertions} / -${deletions}"$'\n\n'
+
+  raw_report="${raw_report}## 贡献者列表"$'\n'
+  raw_report="${raw_report}${contributors_md}"$'\n\n'
+
+  raw_report="${raw_report}## 提交列表（不含 merge）"$'\n'
+  raw_report="${raw_report}${commit_list}"$'\n\n'
+
+  raw_report="${raw_report}## 提交列表（含 merge）"$'\n'
+  raw_report="${raw_report}${commit_list_all}"$'\n\n'
+
+  raw_report="${raw_report}## 变更文件（name-status）"$'\n'
+  raw_report="${raw_report}${changed_files}"$'\n'
+
+  return 0
+}
+
+run_codex() {
+  local repo_dir="$1"
+  local raw_file="$2"
+  local final_file="$3"
+  local raw_payload codex_prompt codex_log_file exec_supported="false"
+
+  command -v "$CODEX_BIN" >/dev/null 2>&1 || fail "未找到 codex 命令：$CODEX_BIN"
+  raw_payload="$(cat "$raw_file")"
+
   codex_prompt="$(cat <<EOF
-你现在在仓库：$root_dir
-
-下面是版本区间原始变更数据，请直接基于这份数据生成最终中文发布说明。
-不要执行任何命令，不要再次读取文件，不要输出过程解释。
-
+你现在要生成模块发布说明。下面是原始变更数据：
 <raw_release_data>
 $raw_payload
 </raw_release_data>
 
-要求：
-1. 标题为：## 版本变更摘要（$old_ref → $new_ref）
-2. 必须包含以下小节，且顺序固定：
+请输出中文 Markdown，要求：
+1. 标题：## 版本变更摘要（$old_ref → $new_ref）
+2. 小节顺序固定：
    - 新增
    - 体验
    - 性能
    - 安全
-3. 每个小节使用编号段落（1、2、3），内容要精炼、中文表达，不要直接照抄英文 commit。
-4. 若某类无内容，写“无”。
-5. 最后追加：
+3. 每个小节使用 1、2、3 编号；无内容写“无”。
+4. 语言简洁，不要照抄英文 commit 原文。
+5. 不要包含以下信息：
    - 提交总数
    - 变更文件数
-   - 代码行数变化（+/-）
-   - 贡献者列表（- @用户名 (提交次数)）
-
-只输出 Markdown 正文，不要额外解释。
+   - 代码行数变化
+   - 贡献者列表
+6. 只输出最终 Markdown 正文，不要解释过程。
 EOF
 )"
 
+  codex_log_file="$(mktemp "${TMPDIR:-/tmp}/release-notes-codex.${module_name}.XXXXXX.log")"
   if "$CODEX_BIN" exec --help >/dev/null 2>&1; then
     exec_supported="true"
   fi
 
-  codex_log_file="$(mktemp "${TMPDIR:-/tmp}/release-notes-codex.XXXXXX.log")"
-
   if [[ "$exec_supported" == "true" ]]; then
-    if "$CODEX_BIN" exec -C "$root_dir" -o "$final_output_file" "$codex_prompt" > /dev/null 2>"$codex_log_file"; then
-      [[ -s "$final_output_file" ]] || fail "codex exec 执行完成，但未生成有效输出文件：$final_output_file"
+    if "$CODEX_BIN" exec -C "$repo_dir" -o "$final_file" "$codex_prompt" > /dev/null 2>"$codex_log_file"; then
+      [[ -s "$final_file" ]] || fail "codex exec 未生成有效文件：$final_file"
       rm -f "$codex_log_file"
       return 0
     fi
   fi
 
-  if "$CODEX_BIN" --input "$codex_prompt" --output "$final_output_file" > /dev/null 2>"$codex_log_file"; then
-    [[ -s "$final_output_file" ]] || fail "codex 执行完成，但未生成有效输出文件：$final_output_file"
+  if "$CODEX_BIN" --input "$codex_prompt" --output "$final_file" > /dev/null 2>"$codex_log_file"; then
+    [[ -s "$final_file" ]] || fail "codex 未生成有效文件：$final_file"
     rm -f "$codex_log_file"
     return 0
   fi
@@ -154,186 +211,103 @@ EOF
     sed -n '1,40p' "$codex_log_file" >&2
   fi
   rm -f "$codex_log_file"
-  fail "调用 codex 失败：当前 CLI 既不支持可用的 'exec -o' 流程，也不支持 '--input/--output' 流程。"
+  return 1
 }
 
-contributors_markdown() {
-  local range="$1"
-  local out=""
-  while IFS=$'\t' read -r commit_count author_name author_email; do
-    [[ -n "${commit_count:-}" ]] || continue
-    local display_name="$author_name"
-    if [[ -z "$display_name" && -n "$author_email" ]]; then
-      display_name="${author_email%@*}"
-    fi
-    display_name="${display_name:-unknown}"
+append_to_archive() {
+  local src_file="$1"
+  local dst_file="$2"
 
-    if [[ -z "$out" ]]; then
-      out="- @${display_name} (${commit_count} 次提交)"
-    else
-      out="${out}"$'\n'"- @${display_name} (${commit_count} 次提交)"
-    fi
-  done < <(
-    git -C "$root_dir" shortlog -sne --format='%an%x09%ae' "$range" | awk '
-      {
-        count=$1
-        $1=""
-        sub(/^ +/, "", $0)
-        name=$0
-        email=""
-        if (match(name, / <[^>]+>$/)) {
-          email=substr(name, RSTART+2, RLENGTH-3)
-          name=substr(name, 1, RSTART-1)
-        }
-        printf "%s\t%s\t%s\n", count, name, email
-      }
-    '
-  )
-  if [[ -n "$out" ]]; then
-    printf '%s\n' "$out"
+  mkdir -p "$(dirname "$dst_file")" || return 1
+  if [[ -f "$dst_file" && -s "$dst_file" ]]; then
+    {
+      printf '\n\n---\n\n'
+      cat "$src_file"
+    } >> "$dst_file" || return 1
   else
-    printf '%s\n' "- 无"
+    cat "$src_file" > "$dst_file" || return 1
   fi
+  return 0
 }
 
-ensure_git_repo
+modules=()
+single_module=""
 
-if [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
-  usage
-  exit 0
-fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --module)
+      [[ $# -ge 2 ]] || fail "--module 缺少参数"
+      single_module="$2"
+      shift 2
+      ;;
+    *)
+      fail "未知参数：$1（可用 --help 查看帮助）"
+      ;;
+  esac
+done
 
-old_ref=""
-new_ref=""
-output_file=""
-raw_output_file=""
-final_stdout_mode="false"
-created_raw_tmp="false"
-created_final_tmp="false"
-
-case "$#" in
-  0)
-    resolve_default_range
-    ;;
-  1)
-    output_file="$1"
-    resolve_default_range
-    ;;
-  2)
-    old_ref="$1"
-    new_ref="$2"
-    ;;
-  3)
-    old_ref="$1"
-    new_ref="$2"
-    output_file="$3"
-    ;;
-  *)
-    usage
-    exit 1
-    ;;
-esac
-
-[[ -n "$old_ref" && -n "$new_ref" ]] || fail "未能确定版本范围。"
-ref_exists "$old_ref" || fail "旧版本引用不存在: $old_ref"
-ref_exists "$new_ref" || fail "新版本引用不存在: $new_ref"
-
-old_commit="$(git -C "$root_dir" rev-parse "$old_ref")"
-new_commit="$(git -C "$root_dir" rev-parse "$new_ref")"
-[[ "$old_commit" != "$new_commit" ]] || fail "两个版本引用指向同一个提交，没有可分析的变更。"
-
-range="${old_ref}..${new_ref}"
-commit_total="$(git -C "$root_dir" rev-list --count "$range")"
-[[ "$commit_total" -gt 0 ]] || fail "版本范围 ${range} 内没有提交记录。"
-
-stats_line="$(git -C "$root_dir" diff --shortstat "$old_ref" "$new_ref" | sed 's/^ *//')"
-files_changed="$(printf '%s\n' "$stats_line" | sed -n 's/.*\([0-9][0-9]*\) files\? changed.*/\1/p')"
-insertions="$(printf '%s\n' "$stats_line" | sed -n 's/.*\([0-9][0-9]*\) insertions\?(+).*/\1/p')"
-deletions="$(printf '%s\n' "$stats_line" | sed -n 's/.*\([0-9][0-9]*\) deletions\?(-).*/\1/p')"
-files_changed="${files_changed:-0}"
-insertions="${insertions:-0}"
-deletions="${deletions:-0}"
-
-contributor_total="$(git -C "$root_dir" shortlog -s "$range" | awk 'NF{count++} END{print count+0}')"
-contributors_md="$(contributors_markdown "$range")"
-
-commit_list="$(git -C "$root_dir" log --reverse --no-merges --format='- `%h` | %ad | %an | %s' --date=short "$range")"
-if [[ -z "$commit_list" ]]; then
-  commit_list="- 无（该范围只有合并提交）"
-fi
-
-commit_list_all="$(git -C "$root_dir" log --reverse --format='- `%h` | %ad | %an | %s' --date=short "$range")"
-
-changed_files="$(git -C "$root_dir" diff --name-status "$old_ref" "$new_ref" | awk '{print "- `" $1 "` " $2}')"
-if [[ -z "$changed_files" ]]; then
-  changed_files="- 无"
-fi
-
-top_files="$(git -C "$root_dir" log --name-only --pretty=format: "$range" \
-  | sed '/^$/d' \
-  | sort \
-  | uniq -c \
-  | sort -nr \
-  | head -n 20 \
-  | awk '{count=$1; $1=""; sub(/^ +/, "", $0); printf "- `%s` (%d 次)\n", $0, count}')"
-if [[ -z "$top_files" ]]; then
-  top_files="- 无"
-fi
-
-report=""
-report="${report}# 版本区间原始变更数据"$'\n\n'
-report="${report}> 说明：本文件为原始输入，供大模型生成最终发布说明。"$'\n'
-report="${report}> 版本范围：\`${old_ref}\` -> \`${new_ref}\`"$'\n'
-report="${report}> 提交范围：\`${range}\`"$'\n\n'
-
-report="${report}## 统计信息"$'\n'
-report="${report}- 提交总数：${commit_total}"$'\n'
-report="${report}- 变更文件数：${files_changed}"$'\n'
-report="${report}- 代码行数变化：+${insertions} / -${deletions}"$'\n'
-report="${report}- 贡献者数量：${contributor_total}"$'\n\n'
-
-report="${report}## 贡献者"$'\n'
-report="${report}${contributors_md}"$'\n\n'
-
-report="${report}## 提交列表（不含 merge）"$'\n'
-report="${report}${commit_list}"$'\n\n'
-
-report="${report}## 提交列表（含 merge）"$'\n'
-report="${report}${commit_list_all}"$'\n\n'
-
-report="${report}## 变更文件（name-status）"$'\n'
-report="${report}${changed_files}"$'\n\n'
-
-report="${report}## 高频变更文件 TOP 20"$'\n'
-report="${report}${top_files}"$'\n'
-
-raw_output_file="${RELEASE_NOTES_RAW_OUTPUT_FILE:-}"
-if [[ -z "$raw_output_file" ]]; then
-  raw_output_file="$(mktemp "${TMPDIR:-/tmp}/release-notes-raw.XXXXXX.md")"
-  created_raw_tmp="true"
-fi
-
-if [[ -z "$output_file" ]]; then
-  output_file="$(mktemp "${TMPDIR:-/tmp}/release-notes-final.XXXXXX.md")"
-  created_final_tmp="true"
-  final_stdout_mode="true"
+if [[ -n "$single_module" ]]; then
+  modules=("$single_module")
 else
-  mkdir -p "$(dirname "$output_file")"
+  read_modules "$MODULES_CONF"
 fi
 
-cleanup_tmp_files() {
-  if [[ "$created_raw_tmp" == "true" && "$KEEP_RAW_INPUT" != "true" && -f "$raw_output_file" ]]; then
-    rm -f "$raw_output_file"
-  fi
-  if [[ "$created_final_tmp" == "true" && "$KEEP_FINAL_TMP" != "true" && -f "$output_file" ]]; then
-    rm -f "$output_file"
-  fi
-}
-trap cleanup_tmp_files EXIT
+[[ "${#modules[@]}" -gt 0 ]] || fail "没有可处理的模块。"
 
-printf '%s' "$report" > "$raw_output_file"
-run_codex_compat "$raw_output_file" "$output_file"
+failed_count=0
+for module_name in "${modules[@]}"; do
+  repo_dir="$REPO_BASE/$module_name"
+  raw_tmp_file="/tmp/release_notes_${module_name}.raw.md"
+  final_tmp_file="/tmp/release_notes_${module_name}.md"
+  archive_file="$ARCHIVE_DIR/release_notes_${module_name}.md"
 
-if [[ "$final_stdout_mode" == "true" ]]; then
-  cat "$output_file"
+  if ! git -C "$repo_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    warn "跳过模块 $module_name：仓库不可用（$repo_dir）"
+    failed_count=$((failed_count + 1))
+    continue
+  fi
+
+  old_ref=""
+  new_ref=""
+  if ! resolve_default_range "$repo_dir"; then
+    warn "跳过模块 $module_name：无法推断版本范围（检查 tag，规则 TAG_GLOB=$TAG_GLOB）"
+    failed_count=$((failed_count + 1))
+    continue
+  fi
+
+  range="${old_ref}..${new_ref}"
+  raw_report=""
+  if ! build_raw_payload "$repo_dir" "$range"; then
+    warn "跳过模块 $module_name：版本范围内没有提交（$range）"
+    failed_count=$((failed_count + 1))
+    continue
+  fi
+
+  printf '%s' "$raw_report" > "$raw_tmp_file"
+  if ! run_codex "$repo_dir" "$raw_tmp_file" "$final_tmp_file"; then
+    warn "模块 $module_name：Codex 生成失败"
+    failed_count=$((failed_count + 1))
+    continue
+  fi
+
+  if ! append_to_archive "$final_tmp_file" "$archive_file"; then
+    warn "模块 $module_name：追加到归档失败（$archive_file）"
+    failed_count=$((failed_count + 1))
+    continue
+  fi
+
+  if [[ "$KEEP_RAW_INPUT" != "true" ]]; then
+    rm -f "$raw_tmp_file"
+  fi
+  printf '模块 %s 已生成：%s，并已追加到：%s\n' "$module_name" "$final_tmp_file" "$archive_file"
+done
+
+if [[ "$failed_count" -gt 0 ]]; then
+  fail "完成但有失败模块数量：$failed_count"
 fi
+
+printf '全部模块处理完成。\n'

@@ -1,68 +1,58 @@
 # release_notes.sh
 
-`release_notes.sh` 会在脚本内直接调用 `codex --input ... --output ...`。  
-流程是：先提取两个版本之间的原始变更数据，再让 Codex 生成最终中文 Markdown 发布说明。
+`release_notes.sh` 通过 `modules.conf` 批量生成模块发布说明。  
+脚本会到固定目录下查找模块仓库，默认按“上一次 tag 比较”，调用 Codex 生成最终中文 Markdown。
 
-## 设计目标
+## 默认行为
 
-- 脚本内直接完成“数据提取 + Codex 生成最终报告”
-- 保留可复用的原始数据输入文件（可选）
-- 可在任意 Git 仓库复用
+1. 从 `scripts/modules.conf` 读取模块名（每行一个，支持 `#` 注释）。
+2. 模块仓库路径：`/home/zb/yeying-community/<模块名>`（脚本内固定）。
+3. 自动确定版本范围：
+   - 若 `HEAD == 最新tag`，则 `上一个tag..最新tag`
+   - 否则 `最新tag..HEAD`
+4. 先写临时结果：`/tmp/release_notes_<模块名>.md`
+5. 再追加到归档：`/opt/packages/release_notes_<模块名>.md`
 
 ## 用法
 
 ```bash
-./scripts/release_notes.sh <旧版本引用> <新版本引用|HEAD> [最终输出文件]
-./scripts/release_notes.sh [最终输出文件]
+./scripts/release_notes.sh
+./scripts/release_notes.sh --module router
 ./scripts/release_notes.sh --help
 ```
 
-示例：
+如果你当前就在 `scripts/` 目录，请执行：
 
 ```bash
-./scripts/release_notes.sh v0.0.1 v0.0.2
-./scripts/release_notes.sh v0.0.1 HEAD /tmp/release-notes.md
-./scripts/release_notes.sh
+./release_notes.sh
 ```
 
-默认模式：
+## modules.conf 示例
 
-- 若 `HEAD` 正好是最新 tag：分析“上一个 tag..最新 tag”
-- 否则：分析“最新 tag..HEAD”
+文件：`scripts/modules.conf`
 
-## 脚本输出
+```text
+# 每行一个模块
+router
+gateway
+billing
+```
 
-最终输出是 Codex 生成的中文 Markdown 报告。  
-脚本内部会先生成一份原始输入数据（默认临时文件），包含以下模块：
+## 输出约束
 
-- 版本范围与提交范围
-- 统计信息（提交数、文件数、+/- 行数、贡献者数）
-- 贡献者列表
-- 提交列表（不含 merge）
-- 提交列表（含 merge）
-- 变更文件（`git diff --name-status`）
-- 高频变更文件 TOP 20
+脚本已约束最终汇总 Markdown：
 
-## 配置
+- 固定小节：`新增`、`体验`、`性能`、`安全`
+- 中文精炼表述
+- 不包含以下信息：
+  - 提交总数
+  - 变更文件数
+  - 代码行数变化
+  - 贡献者列表
 
-脚本会尝试读取以下配置文件（按顺序）：
+## 可配置项
 
-1. `$RELEASE_NOTES_ENV_FILE`
-2. `scripts/release_notes.env`
-3. `scripts/.env`
+当前只保留一个可配置项：
 
-可配置项：
-
-- `RELEASE_NOTES_TAG_GLOB`：默认 tag 匹配规则，默认 `v[0-9]*.[0-9]*.[0-9]*`
 - `RELEASE_NOTES_CODEX_BIN`：Codex 命令名，默认 `codex`
-- `RELEASE_NOTES_RAW_OUTPUT_FILE`：原始输入数据输出路径（可选）
-- `RELEASE_NOTES_KEEP_RAW_INPUT`：是否保留自动创建的原始输入临时文件，默认 `false`
-- `RELEASE_NOTES_KEEP_FINAL_TMP`：未传最终输出文件时，是否保留自动创建的最终报告临时文件，默认 `false`
 
-模板见 [scripts/release_notes.env.template]
-
-## 行为说明
-
-1. 你传了“最终输出文件”：脚本会把最终 Markdown 写到该文件。
-2. 你不传“最终输出文件”：脚本会使用临时文件生成，然后把结果打印到 stdout。
-3. 若未安装或未登录 Codex CLI，脚本会直接报错退出。
