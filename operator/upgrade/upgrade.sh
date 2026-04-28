@@ -165,7 +165,6 @@ log "webdav username: ${WEBDAV_USERNAME:-<empty>}"
 
 mapfile -t remote_files < <(webdav_list_files) || exit 1
 log "remote files count: ${#remote_files[@]}"
-log "remote package pattern: <module>-v<semver>-<7char>.tar.gz"
 log "\nbegin upgrade [$(date)]"
 
 for module_name in "${MODULES[@]}"; do
