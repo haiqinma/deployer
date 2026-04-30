@@ -68,12 +68,16 @@ log "target dir: ${target_dir}"
 
 [[ -f "${current_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${current_dir}/scripts/starter.sh"; exit 1; }
 [[ -f "${target_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${target_dir}/scripts/starter.sh"; exit 1; }
+[[ -f "${current_dir}/.env" ]] || { log "ERROR! missing env file: ${current_dir}/.env"; exit 1; }
 
 log "stop current chat: cd ${current_dir} && scripts/starter.sh stop"
 if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); then
     log "ERROR! failed to stop current chat service"
     exit 1
 fi
+
+cp -f "${current_dir}/.env" "${target_dir}/.env"
+log "copied env file: ${current_dir}/.env -> ${target_dir}/.env"
 
 log "start target chat: cd ${target_dir} && scripts/starter.sh"
 if ! (cd "$target_dir" && bash scripts/starter.sh >> "$LOGFILE" 2>&1); then
