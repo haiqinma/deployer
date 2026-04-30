@@ -14,14 +14,25 @@ export PATH="/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 init_log_file "check-code-status.log"
 
 config_file="${script_dir}/modules.conf"
+env_file="${script_dir}/.env"
 code_root="/root/code"
 package_root="/opt/package"
 transfer_script="${script_dir}/transfer_packages.sh"
 dingtalk_script="${script_dir}/../dingtalk-notify/dingtalk_reminder.py"
 dingtalk_scene="create_package"
+overall_status=0
+notify_type="generate package"
+
+if [[ -f "$env_file" ]]; then
+    # shellcheck disable=SC1090
+    set -a
+    source "$env_file"
+    set +a
+fi
+
 # True: read *_RECEIVER from .env and @userIds; False: no @
 dingtalk_need_at="${DINGTALK_NEED_AT:-False}"
-overall_status=0
+notify_from="${NOTIFY_FROM:-}"
 
 ensure_go_in_path() {
     if command -v go >/dev/null 2>&1; then
@@ -48,6 +59,15 @@ usage() {
     log "Read modules from ${config_file}, then check/build/upload packages."
 }
 
+if [[ -z "${notify_from}" ]]; then
+    notify_from=$(hostname)
+fi
+
+message_head="
+NOTIFY_TYPE: ${notify_type} 
+NOTIFY_FROM: ${notify_from} 
+NOTIFY_CONTENT: "
+
 upload_with_retry() {
     local filename=$1
     local attempt
@@ -56,7 +76,7 @@ upload_with_retry() {
         log "upload attempt ${attempt}/3: ${filename}"
         if bash "$transfer_script" upload "$filename" >> "$LOGFILE" 2>&1; then
             log "upload completed: ${filename}"
-            notify_dingtalk "$dingtalk_need_at" "From vm200: upload completed: ${filename}"
+            notify_dingtalk "$dingtalk_need_at" "${message_head} upload completed: ${filename}"
             return 0
         fi
         log "upload failed on attempt ${attempt}/3: ${filename}"
@@ -328,7 +348,7 @@ for module_name in "${MODULES[@]}"; do
 
     if ! upload_with_retry "$package_filename"; then
         log "ERROR! upload still failed after 3 retries: ${package_filename}"
-        notify_dingtalk "True" "From vm200: upload ${package_filename} failed"
+        notify_dingtalk "True" "${message_head} upload ${package_filename} failed"
         overall_status=1
         continue
     fi
