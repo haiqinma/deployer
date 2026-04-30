@@ -63,8 +63,7 @@ if [[ -z "${notify_from}" ]]; then
     notify_from=$(hostname)
 fi
 
-message_head="
-NOTIFY_TYPE: ${notify_type} 
+message_head="NOTIFY_TYPE: ${notify_type} 
 NOTIFY_FROM: ${notify_from} 
 NOTIFY_CONTENT: "
 
