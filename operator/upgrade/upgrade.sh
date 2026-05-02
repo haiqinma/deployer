@@ -17,15 +17,33 @@ deploy_root="/opt/deploy"
 transfer_script="${script_dir}/transfer_packages.sh"
 dingtalk_script="${script_dir}/../dingtalk-notify/dingtalk_reminder.py"
 dingtalk_scene="upgrade_service"
-# True: read *_RECEIVER from .env and @userIds; False: no @
-dingtalk_need_at="${DINGTALK_NEED_AT:-False}"
 dingtalk_force_at="True"
 overall_status=0
+notify_type="version change"
+
+if [[ -f "$env_file" ]]; then
+    # shellcheck disable=SC1090
+    set -a
+    source "$env_file"
+    set +a
+fi
+
+# True: read *_RECEIVER from .env and @userIds; False: no @
+dingtalk_need_at="${DINGTALK_NEED_AT:-False}"
+notify_from="${NOTIFY_FROM:-}"
 
 usage() {
     log "Usage: $0"
     log "Read modules from ${config_file}, compare remote/latest and local/current, then upgrade when needed."
 }
+
+if [[ -z "${notify_from}" ]]; then
+    notify_from=$(hostname)
+fi
+
+message_head="NOTIFY_TYPE: ${notify_type} 
+NOTIFY_FROM: ${notify_from} 
+NOTIFY_CONTENT: "
 
 notify_dingtalk() {
     local need_at=$1
@@ -179,7 +197,7 @@ for module_name in "${MODULES[@]}"; do
 
     if [[ ${#remote_candidates[@]} -eq 0 ]]; then
         log "ERROR! no remote package found for ${module_name}"
-        notify_alert "${module_name}: no remote package found"
+        notify_alert "${message_head} ${module_name}: no remote package found"
         if [[ ${#remote_files[@]} -gt 0 ]]; then
             log "remote file samples:"
             printf '%s\n' "${remote_files[@]:0:50}" | tee -a "$LOGFILE" >/dev/null
@@ -190,7 +208,7 @@ for module_name in "${MODULES[@]}"; do
 
     if ! select_latest_by_fixed_short_commit "$module_name" "${remote_candidates[@]}"; then
         log "ERROR! failed to parse remote package version for ${module_name}"
-        notify_alert "${module_name}: failed to parse remote package version"
+        notify_alert "${message_head} ${module_name}: failed to parse remote package version"
         overall_status=1
         continue
     fi
@@ -207,14 +225,14 @@ for module_name in "${MODULES[@]}"; do
         log "current version: ${current_version}"
     else
         log "ERROR! current version directory not found in ${deploy_root} for ${module_name}"
-        notify_alert "${module_name}: current version directory not found in ${deploy_root}"
+        notify_alert "${message_head} ${module_name}: current version directory not found in ${deploy_root}"
         overall_status=1
         continue
     fi
 
     if ! version_gt "$target_version" "$current_version"; then
         log "no upgrade needed for ${module_name}, current version ${current_version} is up to date"
-        notify_info "${module_name}: no upgrade needed, current version ${current_version} is up to date"
+        notify_info "${message_head} ${module_name}: no upgrade needed, current version ${current_version} is up to date"
         continue
     fi
 
@@ -222,7 +240,7 @@ for module_name in "${MODULES[@]}"; do
 
     if ! bash "$transfer_script" download "$target_filename" >> "$LOGFILE" 2>&1; then
         log "ERROR! failed to download package: ${target_filename}"
-        notify_alert "${module_name}: failed to download package ${target_filename}"
+        notify_alert "${message_head} ${module_name}: failed to download package ${target_filename}"
         overall_status=1
         continue
     fi
@@ -230,13 +248,13 @@ for module_name in "${MODULES[@]}"; do
     package_file="${package_root}/${target_filename}"
     if [[ ! -f "$package_file" ]]; then
         log "ERROR! downloaded package is missing: ${package_file}"
-        notify_alert "${module_name}: downloaded package is missing ${target_filename}"
+        notify_alert "${message_head} ${module_name}: downloaded package is missing ${target_filename}"
         overall_status=1
         continue
     fi
 
     if ! ensure_extracted_dir "$package_file" "$deploy_root" "$target_dir_name"; then
-        notify_alert "${module_name}: failed to extract package ${target_filename}"
+        notify_alert "${message_head} ${module_name}: failed to extract package ${target_filename}"
         overall_status=1
         continue
     fi
@@ -245,20 +263,20 @@ for module_name in "${MODULES[@]}"; do
     upgrade_script="${script_dir}/upgrade_${module_name}.sh"
     if [[ ! -f "$upgrade_script" ]]; then
         log "ERROR! upgrade script is missing: ${upgrade_script}"
-        notify_alert "${module_name}: upgrade script is missing ${upgrade_script}"
+        notify_alert "${message_head} ${module_name}: upgrade script is missing ${upgrade_script}"
         overall_status=1
         continue
     fi
 
     if ! bash "$upgrade_script" "$current_version" "$target_version" >> "$LOGFILE" 2>&1; then
         log "ERROR! upgrade script failed for ${module_name}"
-        notify_alert "${module_name}: upgrade script failed"
+        notify_alert "${message_head} ${module_name}: upgrade script failed"
         overall_status=1
         continue
     fi
 
     log "upgrade finished for ${module_name}: ${current_version} -> ${target_version}"
-    notify_info "${module_name} upgrade finished: ${current_version} -> ${target_version}"
+    notify_info "${message_head} ${module_name} upgrade finished: ${current_version} -> ${target_version}"
 done
 
 log "\nupgrade done. [$(date)]"

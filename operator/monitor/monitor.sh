@@ -11,19 +11,38 @@ source "${script_dir}/../upgrade/common.sh"
 init_log_file "monitor.log"
 
 config_file="${script_dir}/modules.conf"
+env_file="${script_dir}/.env"
 deploy_root="/opt/deploy"
 temp_dir="/tmp"
 dingtalk_script="${script_dir}/../dingtalk-notify/dingtalk_reminder.py"
 dingtalk_scene="monitor_service"
-# True: read *_RECEIVER from .env and @userIds; False: no @
-dingtalk_need_at="${DINGTALK_NEED_AT:-False}"
 dingtalk_force_at="True"
 overall_status=0
+notify_type="log monitor"
+
+if [[ -f "$env_file" ]]; then
+    # shellcheck disable=SC1090
+    set -a
+    source "$env_file"
+    set +a
+fi
+
+# True: read *_RECEIVER from .env and @userIds; False: no @
+dingtalk_need_at="${DINGTALK_NEED_AT:-False}"
+notify_from="${NOTIFY_FROM:-}"
 
 usage() {
     log "Usage: $0"
     log "Read modules from ${config_file}, monitor error logs, and send notifications when needed."
 }
+
+if [[ -z "${notify_from}" ]]; then
+    notify_from=$(hostname)
+fi
+
+message_head="NOTIFY_TYPE: ${notify_type} 
+NOTIFY_FROM: ${notify_from} 
+NOTIFY_CONTENT: "
 
 notify_dingtalk() {
     local need_at=$1
@@ -178,7 +197,7 @@ for module_name in "${MODULES[@]}"; do
     # Prepare message
     if [[ "$diff_line_count" -le 10 ]]; then
         # Send all diff content
-        message="${current_dir_name} 新增错误日志如下：
+        message="${message_head} ${current_dir_name} 新增错误日志如下：
 
 ${diff_content}"
         log "sending full diff notification for ${module_name}"
@@ -186,7 +205,7 @@ ${diff_content}"
     else
         # Send only last 10 lines
         last_10_lines=$(tail -n 10 "$error_log")
-        message="${current_dir_name} 部分错误日志如下，详情请登陆节点获取：
+        message="${message_head} ${current_dir_name} 部分错误日志如下，详情请登陆节点获取：
 
 ${last_10_lines}"
         log "sending partial diff notification for ${module_name}"
