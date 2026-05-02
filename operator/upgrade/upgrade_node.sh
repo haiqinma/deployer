@@ -70,6 +70,7 @@ log "target dir: ${target_dir}"
 [[ -f "${target_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${target_dir}/scripts/starter.sh"; exit 1; }
 [[ -f "${current_dir}/config.js" ]] || { log "ERROR! missing config: ${current_dir}/config.js"; exit 1; }
 [[ -e "${current_dir}/run" ]] || { log "ERROR! missing run: ${current_dir}/run"; exit 1; }
+[[ -d "${target_dir}/run" ]] || mkdir -p "${target_dir}/run"
 
 log "stop current node: cd ${current_dir} && scripts/starter.sh stop"
 if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); then
@@ -80,7 +81,7 @@ fi
 cp -f "${current_dir}/config.js" "${target_dir}/config.js"
 log "copied config: ${current_dir}/config.js -> ${target_dir}/config.js"
 
-cp -Rf "${current_dir}/run" "${target_dir}/run"
+cp -Rf "${current_dir}/run/." "${target_dir}/run/"
 log "copied run: ${current_dir}/run -> ${target_dir}/run"
 
 log "start target node: cd ${target_dir} && scripts/starter.sh"
