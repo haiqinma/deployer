@@ -7,6 +7,11 @@ shopt -s nullglob
 script_dir=$(cd "$(dirname "$0")" || exit 1; pwd)
 # shellcheck disable=SC1091
 source "${script_dir}/common.sh"
+feishu_common_sh="${script_dir}/../feishu-notify/common.sh"
+if [[ -f "$feishu_common_sh" ]]; then
+    # shellcheck disable=SC1090
+    source "$feishu_common_sh"
+fi
 
 # Use a deterministic PATH for non-login shells (cron/systemd).
 export PATH="/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -20,6 +25,7 @@ package_root="/opt/package"
 transfer_script="${script_dir}/transfer_packages.sh"
 dingtalk_script="${script_dir}/../dingtalk-notify/dingtalk_reminder.py"
 dingtalk_scene="create_package"
+feishu_scene="create_package"
 overall_status=0
 notify_type="generate package"
 
@@ -75,7 +81,7 @@ upload_with_retry() {
         log "upload attempt ${attempt}/3: ${filename}"
         if bash "$transfer_script" upload "$filename" >> "$LOGFILE" 2>&1; then
             log "upload completed: ${filename}"
-            notify_dingtalk "$dingtalk_need_at" "${message_head} upload completed: ${filename}"
+            notify_message "$dingtalk_need_at" "${message_head} upload completed: ${filename}"
             return 0
         fi
         log "upload failed on attempt ${attempt}/3: ${filename}"
@@ -97,6 +103,26 @@ notify_dingtalk() {
     if ! python3 "$dingtalk_script" "$dingtalk_scene" "$need_at" "$message" >> "$LOGFILE" 2>&1; then
         log "WARN! failed to send dingtalk notification"
     fi
+}
+
+notify_feishu() {
+    local message=$1
+
+    if ! declare -F send_feishu_message >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! send_feishu_message "$feishu_scene" "$message" >> "$LOGFILE" 2>&1; then
+        log "WARN! failed to send feishu notification"
+    fi
+}
+
+notify_message() {
+    local need_at=$1
+    local message=$2
+
+    notify_dingtalk "$need_at" "$message"
+    notify_feishu "$message"
 }
 
 if [[ $# -ne 0 ]]; then
@@ -347,7 +373,7 @@ for module_name in "${MODULES[@]}"; do
 
     if ! upload_with_retry "$package_filename"; then
         log "ERROR! upload still failed after 3 retries: ${package_filename}"
-        notify_dingtalk "True" "${message_head} upload ${package_filename} failed"
+        notify_message "True" "${message_head} upload ${package_filename} failed"
         overall_status=1
         continue
     fi

@@ -2,6 +2,8 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+project_root="$(cd "$script_dir/.." && pwd)"
+notify_common_sh="$project_root/feishu-notify/common.sh"
 # 固定配置（按当前发布流程约定）
 REPO_BASE="/root/code"
 MODULES_CONF="$script_dir/modules.conf"
@@ -10,7 +12,6 @@ CODEX_BIN="${RELEASE_NOTES_CODEX_BIN:-codex}"
 ARCHIVE_DIR="/opt/packages"
 KEEP_RAW_INPUT="false"
 DEFAULT_REMOTE="origin"
-FEISHU_SENDER="$script_dir/send_feishu_robot_message.py"
 
 load_env_file() {
   local env_file="$1"
@@ -52,7 +53,11 @@ fail() {
 
 load_runtime_config() {
   load_env_file "$script_dir/.env"
-  load_env_file "$script_dir/release_notes.env"
+  if [[ -f "$notify_common_sh" ]]; then
+    # shellcheck disable=SC1090
+    source "$notify_common_sh"
+    feishu_notify_load_config
+  fi
 }
 
 warn() {
@@ -346,18 +351,6 @@ append_to_archive() {
   return 0
 }
 
-send_to_feishu() {
-  local module_name="$1"
-  local final_file="$2"
-
-  [[ -n "${FEISHU_WEBHOOK_URL:-}" ]] || return 0
-  [[ -f "$FEISHU_SENDER" ]] || fail "未找到飞书发送脚本：$FEISHU_SENDER"
-
-  python3 "$FEISHU_SENDER" \
-    --module "$module_name" \
-    --file "$final_file"
-}
-
 modules=()
 single_module=""
 
@@ -434,10 +427,12 @@ for module_name in "${modules[@]}"; do
     continue
   fi
 
-  if ! send_to_feishu "$module_name" "$final_tmp_file"; then
-    warn "模块 $module_name：飞书推送失败"
-    failed_count=$((failed_count + 1))
-    continue
+  if declare -F notify_release_notes_feishu >/dev/null 2>&1; then
+    if ! notify_release_notes_feishu "$module_name" "$final_tmp_file"; then
+      warn "模块 $module_name：飞书推送失败"
+      failed_count=$((failed_count + 1))
+      continue
+    fi
   fi
 
   if [[ "$KEEP_RAW_INPUT" != "true" ]]; then

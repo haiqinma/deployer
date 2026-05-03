@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+
+feishu_notify_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+feishu_reminder_script="$feishu_notify_dir/feishu_reminder.py"
+
+load_feishu_notify_env_file() {
+  local env_file="$1"
+  [[ -f "$env_file" ]] || return 0
+
+  set -a
+  # shellcheck disable=SC1090
+  source "$env_file"
+  set +a
+}
+
+feishu_notify_load_config() {
+  if [[ "${FEISHU_NOTIFY_CONFIG_LOADED:-false}" == "true" ]]; then
+    return 0
+  fi
+
+  load_feishu_notify_env_file "$feishu_notify_dir/.env"
+  FEISHU_NOTIFY_CONFIG_LOADED="true"
+  export FEISHU_NOTIFY_CONFIG_LOADED
+}
+
+send_feishu_message() {
+  local scene="$1"
+  local message="$2"
+
+  feishu_notify_load_config
+
+  [[ -f "$feishu_reminder_script" ]] || {
+    echo "未找到飞书发送脚本：$feishu_reminder_script" >&2
+    return 1
+  }
+
+  python3 "$feishu_reminder_script" "$scene" "$message"
+}
+
+notify_release_notes_feishu() {
+  local module_name="$1"
+  local content_file="$2"
+  local message
+
+  [[ -f "$content_file" ]] || {
+    echo "未找到变更摘要文件：$content_file" >&2
+    return 1
+  }
+
+  message="$(printf '模块：%s\n\n%s\n' "$module_name" "$(cat "$content_file")")"
+  send_feishu_message "release_notes" "$message"
+}
