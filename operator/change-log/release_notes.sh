@@ -30,8 +30,8 @@ authoring_note() {
 usage() {
   cat <<EOF
 用法:
-  ./scripts/release_notes.sh
-  ./scripts/release_notes.sh --module <模块名>
+  ./release_notes.sh
+  ./release_notes.sh --module <模块名>
 
 说明:
   1. 默认从 $MODULES_CONF 读取模块列表（每行一个模块，支持 # 注释）。
@@ -247,10 +247,20 @@ check_codex_requirements() {
   fail "Codex CLI 不兼容：需要支持 'codex exec -C -o' 或旧版 '--input/--output' 参数"
 }
 
+ensure_codex_requirements_checked() {
+  if [[ "${codex_requirements_checked:-false}" == "true" ]]; then
+    return 0
+  fi
+
+  check_codex_requirements
+  codex_requirements_checked="true"
+}
+
 run_codex() {
   local repo_dir="$1"
   local raw_file="$2"
   local final_file="$3"
+  local notes_heading="$4"
   local raw_payload codex_prompt codex_log_file exec_supported="false" legacy_supported="false"
 
   raw_payload="$(cat "$raw_file")"
@@ -262,7 +272,8 @@ $raw_payload
 </raw_release_data>
 
 请输出中文 Markdown，要求：
-1. 标题：## （$module_name）版本发布变更摘要（$new_ref）
+1. 标题：## $notes_heading
+2. 发布时间：
 2. 小节顺序固定：
    - 新增功能
    - 体验优化
@@ -279,7 +290,7 @@ $raw_payload
 EOF
 )"
 
-  codex_log_file="$(mktemp "${TMPDIR:-/tmp}/release-notes-codex.${module_name}.XXXXXX.log")"
+  codex_log_file="$(mktemp "${TMPDIR:-/tmp}/release-notes-codex.${module_name}.log")"
   if codex_supports_exec; then
     exec_supported="true"
   elif codex_supports_legacy_io; then
@@ -375,9 +386,9 @@ else
 fi
 
 [[ "${#modules[@]}" -gt 0 ]] || fail "没有可处理的模块。"
-check_codex_requirements
 
 failed_count=0
+codex_requirements_checked="false"
 for module_name in "${modules[@]}"; do
   repo_dir="$REPO_BASE/$module_name"
   raw_tmp_file="/tmp/release_notes_${module_name}.raw.md"
@@ -399,6 +410,12 @@ for module_name in "${modules[@]}"; do
     continue
   fi
 
+  summary_heading="【发布通知】版本发布变更摘要[$module_name : $new_ref]"
+  if archive_has_range "$archive_file" "$summary_heading"; then
+    printf '模块 %s 的概要信息已存在，跳过重新生成：%s\n' "$module_name" "$summary_heading"
+    continue
+  fi
+
   range="${old_ref}..${new_ref}"
   raw_report=""
   if ! build_raw_payload "$repo_dir" "$range"; then
@@ -408,13 +425,14 @@ for module_name in "${modules[@]}"; do
   fi
 
   printf '%s' "$raw_report" > "$raw_tmp_file"
-  if ! run_codex "$repo_dir" "$raw_tmp_file" "$final_tmp_file"; then
+  ensure_codex_requirements_checked
+  if ! run_codex "$repo_dir" "$raw_tmp_file" "$final_tmp_file" "$summary_heading"; then
     warn "模块 $module_name：Codex 生成失败"
     failed_count=$((failed_count + 1))
     continue
   fi
 
-  summary_heading="## 版本变更摘要（$old_ref → $new_ref）"
+ 
   if ! append_to_archive "$final_tmp_file" "$archive_file" "$summary_heading"; then
     warn "模块 $module_name：追加到归档失败（$archive_file）"
     failed_count=$((failed_count + 1))
