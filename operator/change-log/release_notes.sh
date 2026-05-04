@@ -290,7 +290,7 @@ $raw_payload
 EOF
 )"
 
-  codex_log_file="$(mktemp "${TMPDIR:-/tmp}/release-notes-codex.${module_name}.log")"
+  codex_log_file="$(mktemp "${TMPDIR:-/tmp}/release-notes-codex.${module_name}.XXXXXX.log")"
   if codex_supports_exec; then
     exec_supported="true"
   elif codex_supports_legacy_io; then
