@@ -10,6 +10,9 @@
 - [DEPLOYMENT_TEMPLATE.md](./DEPLOYMENT_TEMPLATE.md)  
   部署文档模板（含部署步骤、验证、回滚和 AI 编写约束）
 
+- [NOTIFICATION_TEMPLATE.md](./NOTIFICATION_TEMPLATE.md)  
+  通知模板（含发布通知、系统错误通知、重要事件通知和通用通知）
+
 - [README_TEMPLATE.md](./README_TEMPLATE.md)  
   项目 README 编写模板与说明
 
