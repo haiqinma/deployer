@@ -9,7 +9,7 @@ REPO_BASE="/root/code"
 MODULES_CONF="$script_dir/modules.conf"
 TAG_GLOB="v[0-9]*.[0-9]*.[0-9]*"
 CODEX_BIN="${RELEASE_NOTES_CODEX_BIN:-codex}"
-ARCHIVE_DIR="/opt/packages"
+ARCHIVE_DIR="/opt/package"
 KEEP_RAW_INPUT="false"
 DEFAULT_REMOTE="origin"
 
@@ -166,7 +166,7 @@ build_raw_payload() {
     printf "- @%s (%s 次提交)\n", name, count
   }')"
   if [[ -z "$contributors_md" ]]; then
-    contributors_md="- 无"
+    contributors_md="- none"
   fi
 
   commit_list="$(git -C "$repo_dir" log --reverse --no-merges --format='- `%h` | %ad | %an | %s' --date=short "$range")"
@@ -181,48 +181,42 @@ build_raw_payload() {
   fi
 
   raw_report=""
-  raw_report="${raw_report}# 版本区间原始变更数据"$'
+  raw_report="${raw_report}# Raw data"$'
 
 '
-  raw_report="${raw_report}> 模块：\`${module_name}\`"$'
+  raw_report="${raw_report}> Module Name：\`${module_name}\`"$'
 '
-  raw_report="${raw_report}> 仓库：\`${repo_dir}\`"$'
+  raw_report="${raw_report}> repository：\`${repo_dir}\`"$'
 '
-  raw_report="${raw_report}> 版本范围：\`${old_ref}\` -> \`${new_ref}\`"$'
+  raw_report="${raw_report}> Current Version：\`${new_ref}\`"$'
 '
-  raw_report="${raw_report}> 提交范围：\`${range}\`"$'
-
-'
-
-  raw_report="${raw_report}## 统计信息"$'
-'
-  raw_report="${raw_report}- 提交总数：${commit_total}"$'
-'
-  raw_report="${raw_report}- 变更文件数：${files_changed}"$'
-'
-  raw_report="${raw_report}- 代码行数变化：+${insertions} / -${deletions}"$'
+  raw_report="${raw_report}> Submit Range：\`${range}\`"$'
 
 '
 
-  raw_report="${raw_report}## 贡献者列表"$'
+  raw_report="${raw_report}## Statistics"$'
 '
-  raw_report="${raw_report}${contributors_md}"$'
+  raw_report="${raw_report}- Commits：${commit_total}"$'
+'
+  raw_report="${raw_report}- Files Changed：${files_changed}"$'
+'
+  raw_report="${raw_report}- Lines of code changes：+${insertions} / -${deletions}"$'
 
 '
 
-  raw_report="${raw_report}## 提交列表（不含 merge）"$'
+  raw_report="${raw_report}## Commit list (excluding merges)"$'
 '
   raw_report="${raw_report}${commit_list}"$'
 
 '
 
-  raw_report="${raw_report}## 提交列表（含 merge）"$'
+  raw_report="${raw_report}## Commit list (including merges)"$'
 '
   raw_report="${raw_report}${commit_list_all}"$'
 
 '
 
-  raw_report="${raw_report}## 变更文件（name-status）"$'
+  raw_report="${raw_report}## Files changed（name-status）"$'
 '
   raw_report="${raw_report}${changed_files}"$'
 '
@@ -262,18 +256,18 @@ run_codex() {
   raw_payload="$(cat "$raw_file")"
 
   codex_prompt="$(cat <<EOF
-你现在要生成模块发布说明。下面是原始变更数据：
+生成模块发布说明,下面是原始变更数据：
 <raw_release_data>
 $raw_payload
 </raw_release_data>
 
 请输出中文 Markdown，要求：
-1. 标题：## 版本变更摘要（$old_ref → $new_ref）
+1. 标题：## （$module_name）版本发布变更摘要（$new_ref）
 2. 小节顺序固定：
-   - 新增
-   - 体验
-   - 性能
-   - 安全
+   - 新增功能
+   - 体验优化
+   - 性能提升
+   - 安全加固
 3. 每个小节使用 1、2、3 编号；无内容写“无”。
 4. 语言简洁，不要照抄英文 commit 原文。
 5. 不要包含以下信息：

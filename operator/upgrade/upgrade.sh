@@ -25,7 +25,7 @@ dingtalk_scene="upgrade_service"
 dingtalk_force_at="True"
 feishu_scene="upgrade_service"
 overall_status=0
-notify_type="version change"
+notify_type="版本升级"
 
 if [[ -f "$env_file" ]]; then
     # shellcheck disable=SC1090
@@ -47,9 +47,9 @@ if [[ -z "${notify_from}" ]]; then
     notify_from=$(hostname)
 fi
 
-message_head="NOTIFY_TYPE: ${notify_type} 
-NOTIFY_FROM: ${notify_from} 
-NOTIFY_CONTENT: "
+message_head="通知类型: ${notify_type} 
+通知来源: ${notify_from} 
+通知内容: "
 
 notify_dingtalk() {
     local need_at=$1

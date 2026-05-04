@@ -23,11 +23,12 @@ env_file="${script_dir}/.env"
 code_root="/root/code"
 package_root="/opt/package"
 transfer_script="${script_dir}/transfer_packages.sh"
+release_notes_script="${script_dir}/../change-log/release_notes.sh"
 dingtalk_script="${script_dir}/../dingtalk-notify/dingtalk_reminder.py"
 dingtalk_scene="create_package"
 feishu_scene="create_package"
 overall_status=0
-notify_type="generate package"
+notify_type="版本生成"
 
 if [[ -f "$env_file" ]]; then
     # shellcheck disable=SC1090
@@ -69,9 +70,9 @@ if [[ -z "${notify_from}" ]]; then
     notify_from=$(hostname)
 fi
 
-message_head="NOTIFY_TYPE: ${notify_type} 
-NOTIFY_FROM: ${notify_from} 
-NOTIFY_CONTENT: "
+message_head="通知类型: ${notify_type} 
+通知来源: ${notify_from} 
+通知内容: "
 
 upload_with_retry() {
     local filename=$1
@@ -359,6 +360,14 @@ for module_name in "${MODULES[@]}"; do
         rm -f "$build_state_before"
         overall_status=1
         continue
+    fi
+
+    if [[ ! -f "$release_notes_script" ]]; then
+        log "WARN! release notes script is missing: ${release_notes_script}"
+    elif ! bash "$release_notes_script" --module "$module_name" >> "$LOGFILE" 2>&1; then
+        log "WARN! release notes script failed for ${module_name}"
+    else
+        log "release notes generated for ${module_name}"
     fi
 
     package_hash_after=$(sha256sum "$package_file" | awk '{print $1}')

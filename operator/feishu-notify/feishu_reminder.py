@@ -38,7 +38,7 @@ def load_env_file(env_path: Path):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="发送消息到飞书机器人")
+    parser = argparse.ArgumentParser(description="send message to feishu ")
     parser.add_argument("scene", nargs="?")
     parser.add_argument("positional_message", nargs="?")
     parser.add_argument("--webhook", dest="webhook")
@@ -177,7 +177,7 @@ def main():
             content = f"{chunk}\n\n({index}/{len(chunks)})"
         send_message(webhook, secret, content)
 
-    print(f"飞书消息发送成功: scene={args.scene or 'custom'}, chunks={len(chunks)}")
+    print(f"send message to feishu successful: scene={args.scene or 'custom'}, chunks={len(chunks)}")
 
 
 if __name__ == "__main__":

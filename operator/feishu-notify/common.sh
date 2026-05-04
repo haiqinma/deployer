@@ -30,7 +30,7 @@ send_feishu_message() {
   feishu_notify_load_config
 
   [[ -f "$feishu_reminder_script" ]] || {
-    echo "未找到飞书发送脚本：$feishu_reminder_script" >&2
+    echo "cannot find script：$feishu_reminder_script" >&2
     return 1
   }
 
@@ -43,10 +43,10 @@ notify_release_notes_feishu() {
   local message
 
   [[ -f "$content_file" ]] || {
-    echo "未找到变更摘要文件：$content_file" >&2
+    echo "cannot find Change Summary Notes：$content_file" >&2
     return 1
   }
 
-  message="$(printf '模块：%s\n\n%s\n' "$module_name" "$(cat "$content_file")")"
+  message="$(printf 'Module：%s\n\n%s\n' "$module_name" "$(cat "$content_file")")"
   send_feishu_message "release_notes" "$message"
 }
