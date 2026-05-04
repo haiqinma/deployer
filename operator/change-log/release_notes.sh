@@ -12,6 +12,7 @@ CODEX_BIN="${RELEASE_NOTES_CODEX_BIN:-codex}"
 ARCHIVE_DIR="/opt/package"
 KEEP_RAW_INPUT="false"
 DEFAULT_REMOTE="origin"
+NOTIFY_TYPE='发布通知'
 
 load_env_file() {
   local env_file="$1"
@@ -273,20 +274,20 @@ $raw_payload
 
 请输出中文 Markdown，要求：
 1. 标题：## $notes_heading
-2. 发布时间：
-2. 小节顺序固定：
+2. 发布时间：（使用linux的date命令获取即可）
+3. 小节顺序固定：
    - 新增功能
    - 体验优化
    - 性能提升
    - 安全加固
-3. 每个小节使用 1、2、3 编号；无内容写“无”。
-4. 语言简洁，不要照抄英文 commit 原文。
-5. 不要包含以下信息：
+4. 每个小节使用 1、2、3 编号；无内容写“无”。
+5. 语言简洁，不要照抄英文 commit 原文。
+6. 不要包含以下信息：
    - 提交总数
    - 变更文件数
    - 代码行数变化
    - 贡献者列表
-6. 只输出最终 Markdown 正文，不要解释过程。
+7. 只输出最终 Markdown 正文，不要解释过程。
 EOF
 )"
 
@@ -324,21 +325,24 @@ EOF
 
 archive_has_range() {
   local dst_file="$1"
-  local heading="$2"
+  local notify_type="$2"
+  local version="$3"
+  local pattern="【${notify_type}】.*${version}"
 
   [[ -f "$dst_file" ]] || return 1
-  grep -Fqx "$heading" "$dst_file"
+  grep -Eq "$pattern" "$dst_file"
 }
 
 append_to_archive() {
   local src_file="$1"
   local dst_file="$2"
   local heading="$3"
+  local notify_type="$4"
+  local version="$5"
 
   mkdir -p "$(dirname "$dst_file")" || return 1
-  if archive_has_range "$dst_file" "$heading"; then
-    printf '归档已存在相同版本范围，跳过追加：%s
-' "$heading"
+  if archive_has_range "$dst_file" "$notify_type" "$version"; then
+    printf '归档已存在相同通知类型和版本号，跳过追加：[%s] %s\n' "$notify_type" "$version"
     return 0
   fi
   if [[ -f "$dst_file" && -s "$dst_file" ]]; then
@@ -410,9 +414,9 @@ for module_name in "${modules[@]}"; do
     continue
   fi
 
-  summary_heading="【发布通知】版本发布变更摘要[$module_name : $new_ref]"
-  if archive_has_range "$archive_file" "$summary_heading"; then
-    printf '模块 %s 的概要信息已存在，跳过重新生成：%s\n' "$module_name" "$summary_heading"
+  summary_heading="【$NOTIFY_TYPE】版本发布变更摘要[$module_name : $new_ref]"
+  if archive_has_range "$archive_file" "$NOTIFY_TYPE" "$new_ref"; then
+    printf '模块 %s 的概要信息已存在，跳过重新生成：[%s] %s\n' "$module_name" "$NOTIFY_TYPE" "$new_ref"
     continue
   fi
 
@@ -433,7 +437,7 @@ for module_name in "${modules[@]}"; do
   fi
 
  
-  if ! append_to_archive "$final_tmp_file" "$archive_file" "$summary_heading"; then
+  if ! append_to_archive "$final_tmp_file" "$archive_file" "$summary_heading" "$NOTIFY_TYPE" "$new_ref"; then
     warn "模块 $module_name：追加到归档失败（$archive_file）"
     failed_count=$((failed_count + 1))
     continue
