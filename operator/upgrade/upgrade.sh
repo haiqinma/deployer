@@ -37,6 +37,7 @@ fi
 # True: read *_RECEIVER from .env and @userIds; False: no @
 dingtalk_need_at="${DINGTALK_NEED_AT:-False}"
 notify_from="${NOTIFY_FROM:-}"
+notify_same_version="${NOTIFY_SAME_VERSION:-False}"
 notify_dingtalk_enabled="${NOTIFY_DINGDING:-False}"
 notify_feishu_enabled="${NOTIFY_FEISHU:-False}"
 
@@ -179,6 +180,17 @@ notify_info() {
 notify_alert() {
     local message=$1
     notify_message "$dingtalk_force_at" "$message"
+}
+
+notify_same_version_enabled() {
+    case "${notify_same_version}" in
+        True|true)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 if [[ $# -ne 0 ]]; then
@@ -337,12 +349,14 @@ for module_name in "${MODULES[@]}"; do
 
     if ! version_gt "$target_version" "$current_version"; then
         log "no upgrade needed for ${module_name}, current version ${current_version} is up to date"
-        notify_info "$(format_release_notice \
-            "${module_name}/升级检查" \
-            "v${current_version}" \
-            "${notify_from}" \
-            "远程版本 v${target_version} 与当前版本一致，无需升级" \
-            "无需升级，当前版本已是最新")"
+        if notify_same_version_enabled; then
+            notify_info "$(format_release_notice \
+                "${module_name}/升级检查" \
+                "v${current_version}" \
+                "${notify_from}" \
+                "远程版本 v${target_version} 与当前版本一致，无需升级" \
+                "无需升级，当前版本已是最新")"
+        fi
         continue
     fi
 
