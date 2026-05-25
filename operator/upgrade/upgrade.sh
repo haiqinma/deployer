@@ -125,7 +125,8 @@ format_error_notice() {
 1. ${next_step}
 2. 检查日志 ${LOGFILE}
 
-负责人：${notify_owner}
+环境信息：${notify_owner}
+跟进人：
 EOF
 }
 

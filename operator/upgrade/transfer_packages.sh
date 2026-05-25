@@ -27,8 +27,6 @@ usage() {
 load_webdav_config() {
     local base_url
 
-    base_url="https://webdav.yeying.pub/dav/personal/public_community/package"
-
     if [[ ! -f "$env_file" ]]; then
         log "ERROR! env file is missing: ${env_file}"
         return 1
@@ -44,7 +42,7 @@ load_webdav_config() {
         return 1
     fi
 
-    base_url=$(trim "${WEBDAV_PACKAGE_BASE_URL:-$base_url}")
+    base_url=$(trim "${WEBDAV_PACKAGE_BASE_URL:-}")
 
     base_url="${base_url%/}"
 
