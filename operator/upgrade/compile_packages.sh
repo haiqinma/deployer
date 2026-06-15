@@ -13,8 +13,9 @@ if [[ -f "$feishu_common_sh" ]]; then
     source "$feishu_common_sh"
 fi
 
-# Use a deterministic PATH for non-login shells (cron/systemd).
-export PATH="/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Keep a deterministic baseline PATH for non-login shells (cron/systemd),
+# but preserve any existing entries such as nvm-installed CLIs.
+export PATH="/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:${PATH}}"
 
 init_log_file "check-code-status.log"
 
@@ -61,6 +62,44 @@ ensure_go_in_path() {
         source /etc/profile >/dev/null 2>&1 || true
     fi
     command -v go >/dev/null 2>&1
+}
+
+ensure_release_notes_codex() {
+    local candidate
+
+    if [[ -n "${RELEASE_NOTES_CODEX_BIN:-}" ]]; then
+        if command -v "$RELEASE_NOTES_CODEX_BIN" >/dev/null 2>&1; then
+            return 0
+        fi
+        if [[ "$RELEASE_NOTES_CODEX_BIN" == */* && -x "$RELEASE_NOTES_CODEX_BIN" ]]; then
+            export PATH="$(dirname "$RELEASE_NOTES_CODEX_BIN"):${PATH}"
+            return 0
+        fi
+    fi
+
+    for candidate in \
+        "${HOME:-/root}"/.nvm/versions/node/*/bin/codex \
+        /root/.nvm/versions/node/*/bin/codex \
+        /usr/local/bin/codex \
+        /usr/bin/codex; do
+        if [[ -x "$candidate" ]]; then
+            export RELEASE_NOTES_CODEX_BIN="$candidate"
+            export PATH="$(dirname "$candidate"):${PATH}"
+            return 0
+        fi
+    done
+
+    if [[ -f /etc/profile ]]; then
+        # shellcheck disable=SC1091
+        source /etc/profile >/dev/null 2>&1 || true
+    fi
+
+    if command -v codex >/dev/null 2>&1; then
+        export RELEASE_NOTES_CODEX_BIN="$(command -v codex)"
+        return 0
+    fi
+
+    return 1
 }
 
 usage() {
@@ -370,6 +409,11 @@ if ensure_go_in_path; then
     log "go command detected: $(command -v go)"
 else
     log "WARN! go command not found in PATH before module checks"
+fi
+if ensure_release_notes_codex; then
+    log "release notes codex detected: ${RELEASE_NOTES_CODEX_BIN}"
+else
+    log "WARN! release notes codex not found before module checks"
 fi
 
 for module_name in "${MODULES[@]}"; do
