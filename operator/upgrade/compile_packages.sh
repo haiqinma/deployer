@@ -641,6 +641,20 @@ for module_name in "${MODULES[@]}"; do
     cp -f "$package_file" "${package_root}/${package_filename}"
     log "package copied to ${package_root}/${package_filename}"
 
+    if ! upload_with_retry "$package_filename"; then
+        log "ERROR! upload still failed after 3 retries: ${package_filename}"
+        notify_message "True" "$(format_error_notice \
+            "${module_name}/${notify_type}" \
+            "P2" \
+            "处理中" \
+            "产物上传连续 3 次失败：${package_filename}" \
+            "新版本产物未能同步到制品仓库" \
+            "构建已完成，故障出现在上传阶段" \
+            "检查网络、WebDAV 配置和传输脚本后重试上传")"
+        overall_status=1
+        continue
+    fi
+
     if verify_algorithm_enabled; then
         generate_package_verify_file "$package_filename"
         if ! upload_with_retry "${package_filename}.${file_verify}" "False"; then
@@ -656,20 +670,6 @@ for module_name in "${MODULES[@]}"; do
             overall_status=1
             continue
         fi
-    fi
-
-    if ! upload_with_retry "$package_filename"; then
-        log "ERROR! upload still failed after 3 retries: ${package_filename}"
-        notify_message "True" "$(format_error_notice \
-            "${module_name}/${notify_type}" \
-            "P2" \
-            "处理中" \
-            "产物上传连续 3 次失败：${package_filename}" \
-            "新版本产物未能同步到制品仓库" \
-            "构建已完成，故障出现在上传阶段" \
-            "检查网络、WebDAV 配置和传输脚本后重试上传")"
-        overall_status=1
-        continue
     fi
 done
 

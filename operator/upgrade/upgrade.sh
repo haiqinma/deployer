@@ -117,7 +117,6 @@ format_error_notice() {
 影响范围：
 - 影响用户：使用 ${title%%/*} 的用户
 - 影响功能：${impact}
-- 影响环境：升级流程
 
 当前判断：
 - ${judgment}
@@ -334,14 +333,17 @@ for module_name in "${MODULES[@]}"; do
     done
 
     if [[ ${#remote_candidates[@]} -eq 0 ]]; then
+        target_package_names="${module_name}-*.tar.gz"
+        remote_base_url_for_notice=$(trim "${WEBDAV_PACKAGE_BASE_URL:-}")
+        remote_base_url_for_notice="${remote_base_url_for_notice%/}"
         log "ERROR! no remote package found for ${module_name}"
         notify_alert "$(format_error_notice \
             "${module_name}/${notify_type}" \
             "P2" \
-            "处理中" \
-            "未找到可用远程安装包" \
+            "需要处理" \
+            "未在配置的目录中找到目标安装包[${target_package_names}]" \
             "无法为 ${module_name} 执行版本升级" \
-            "远程制品目录中缺少该模块的发布包" \
+            "远程目录[${remote_base_url_for_notice}]缺少缺少该模块的发布包[${target_package_names}]" \
             "检查制品仓库内容并补齐安装包后重新执行升级")"
         if [[ ${#remote_files[@]} -gt 0 ]]; then
             log "remote file samples:"
