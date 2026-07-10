@@ -1,4 +1,10 @@
 
+
+# 下载安装包
+
+[访问地址](https://go.dev/doc/install)
+[1.24.13](wget https://dl.google.com/go/go1.24.13.linux-amd64.tar.gz)
+
 # 设置代理
 
 ## 使用命令永久设置:

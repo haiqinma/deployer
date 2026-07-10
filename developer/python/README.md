@@ -8,6 +8,7 @@
 ### 使用 Homebrew 安装
 ```bash
 brew install pyenv
+brew install xz
 ```
 
 ### 配置环境变量
