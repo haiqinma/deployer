@@ -641,6 +641,10 @@ for module_name in "${MODULES[@]}"; do
     cp -f "$package_file" "${package_root}/${package_filename}"
     log "package copied to ${package_root}/${package_filename}"
 
+    if verify_algorithm_enabled; then
+        generate_package_verify_file "$package_filename"
+    fi
+
     if ! upload_with_retry "$package_filename"; then
         log "ERROR! upload still failed after 3 retries: ${package_filename}"
         notify_message "True" "$(format_error_notice \
@@ -656,7 +660,6 @@ for module_name in "${MODULES[@]}"; do
     fi
 
     if verify_algorithm_enabled; then
-        generate_package_verify_file "$package_filename"
         if ! upload_with_retry "${package_filename}.${file_verify}" "False"; then
             log "ERROR! upload still failed after 3 retries: ${package_filename}.${file_verify}"
             notify_message "True" "$(format_error_notice \
