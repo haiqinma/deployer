@@ -2,6 +2,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/../upgrade/common.sh"
 project_root="$(cd "$script_dir/.." && pwd)"
 notify_common_sh="$project_root/feishu-notify/common.sh"
 # 固定配置（按当前发布流程约定）
@@ -17,6 +18,8 @@ notify_from=""
 notify_owner=""
 notify_dingtalk_enabled="False"
 notify_feishu_enabled="False"
+
+init_log_file "generate-release-notes.log"
 
 load_env_file() {
   local env_file="$1"
@@ -51,8 +54,7 @@ EOF
 }
 
 fail() {
-  printf 'Error: %s
-' "$*" >&2
+  log_err "Error: $*"
   exit 1
 }
 
@@ -73,8 +75,7 @@ load_runtime_config() {
 }
 
 warn() {
-  printf 'Warn: %s
-' "$*" >&2
+  log_err "Warn: $*"
 }
 
 notify_release_notes_feishu() {
@@ -82,12 +83,12 @@ notify_release_notes_feishu() {
   local message
 
   [[ -f "$content_file" ]] || {
-    echo "cannot find Change Summary Notes：$content_file" >&2
+    log_err "cannot find Change Summary Notes：$content_file"
     return 1
   }
 
   if ! declare -F send_feishu_message >/dev/null 2>&1; then
-    echo "cannot find send_feishu_message function" >&2
+    log_err "cannot find send_feishu_message function"
     return 1
   fi
 
@@ -364,7 +365,9 @@ EOF
   fi
 
   if [[ -s "$codex_log_file" ]]; then
-    sed -n '1,40p' "$codex_log_file" >&2
+    while IFS= read -r codex_log_line; do
+      log_err "Codex: $codex_log_line"
+    done < <(sed -n '1,40p' "$codex_log_file")
   fi
   rm -f "$codex_log_file"
   return 1
@@ -388,7 +391,7 @@ append_to_archive() {
 
   mkdir -p "$(dirname "$dst_file")" || return 1
   if archive_has_range "$dst_file" "$notify_type" "$version"; then
-    printf '归档已存在相同通知类型和版本号，跳过追加：[%s] %s\n' "$notify_type" "$version"
+    log "归档已存在相同通知类型和版本号，跳过追加：[$notify_type] $version"
     return 0
   fi
   if [[ -f "$dst_file" && -s "$dst_file" ]]; then
@@ -462,7 +465,7 @@ for module_name in "${modules[@]}"; do
 
   summary_heading="【$NOTIFY_TYPE】${module_name} 已发布"
   if archive_has_range "$archive_file" "$NOTIFY_TYPE" "$new_ref"; then
-    printf '模块 %s 的概要信息已存在，跳过重新生成：[%s] %s\n' "$module_name" "$NOTIFY_TYPE" "$new_ref"
+    log "模块 $module_name 的概要信息已存在，跳过重新生成：[$NOTIFY_TYPE] $new_ref"
     continue
   fi
 
@@ -504,13 +507,11 @@ for module_name in "${modules[@]}"; do
   if [[ "$KEEP_RAW_INPUT" != "true" ]]; then
     rm -f "$raw_tmp_file"
   fi
-  printf '模块 %s 已生成：%s，并已处理归档：%s
-' "$module_name" "$final_tmp_file" "$archive_file"
+  log "模块 $module_name 已生成：$final_tmp_file，并已处理归档：$archive_file"
 done
 
 if [[ "$failed_count" -gt 0 ]]; then
   fail "完成但有失败模块数量：$failed_count"
 fi
 
-printf '全部模块处理完成。
-'
+log "全部模块处理完成。"

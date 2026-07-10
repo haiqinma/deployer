@@ -43,6 +43,7 @@ dingtalk_need_at="${DINGTALK_NEED_AT:-False}"
 notify_from="${NOTIFY_FROM:-}"
 notify_dingtalk_enabled="${NOTIFY_DINGDING:-False}"
 notify_feishu_enabled="${NOTIFY_FEISHU:-False}"
+file_verify="$(trim "${FILE_VERIFY:-}")"
 
 ensure_go_in_path() {
     if command -v go >/dev/null 2>&1; then
@@ -172,6 +173,7 @@ EOF
 
 upload_with_retry() {
     local filename=$1
+    local notify_success=${2:-True}
     local attempt
     local module_name="" version=""
 
@@ -189,12 +191,14 @@ upload_with_retry() {
         log "upload attempt ${attempt}/3: ${filename}"
         if bash "$transfer_script" upload "$filename" >> "$LOGFILE" 2>&1; then
             log "upload completed: ${filename}"
-            notify_message "$dingtalk_need_at" "$(format_release_notice \
-                "${module_name}/构建产物" \
-                "${version}" \
-                "编译节点" \
-                "已完成产物上传：${filename}" \
-                "已构建，上传完毕")"
+            if [[ "$notify_success" == "True" ]]; then
+                notify_message "$dingtalk_need_at" "$(format_release_notice \
+                    "${module_name}/构建产物" \
+                    "${version}" \
+                    "编译节点" \
+                    "已完成产物上传：${filename}" \
+                    "已构建，上传完毕")"
+            fi
             return 0
         fi
         log "upload failed on attempt ${attempt}/3: ${filename}"
@@ -202,6 +206,40 @@ upload_with_retry() {
     done
 
     return 1
+}
+
+verify_algorithm_enabled() {
+    case "$file_verify" in
+        sha256sum|md5sum)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+validate_file_verify_config() {
+    case "$file_verify" in
+        ""|sha256sum|md5sum)
+            return 0
+            ;;
+        *)
+            log "ERROR! unsupported FILE_VERIFY: ${file_verify}, expected empty, sha256sum or md5sum"
+            return 1
+            ;;
+    esac
+}
+
+generate_package_verify_file() {
+    local filename=$1
+    local verify_filename="${filename}.${file_verify}"
+
+    (
+        cd "$package_root"
+        "$file_verify" "$filename" > "$verify_filename"
+    )
+    log "verify file generated: ${package_root}/${verify_filename}"
 }
 
 notify_dingtalk() {
@@ -283,6 +321,8 @@ if [[ $# -ne 0 ]]; then
     usage
     exit 1
 fi
+
+validate_file_verify_config || exit 1
 
 load_modules "$config_file" || {
     usage
@@ -601,6 +641,10 @@ for module_name in "${MODULES[@]}"; do
     cp -f "$package_file" "${package_root}/${package_filename}"
     log "package copied to ${package_root}/${package_filename}"
 
+    if verify_algorithm_enabled; then
+        generate_package_verify_file "$package_filename"
+    fi
+
     if ! upload_with_retry "$package_filename"; then
         log "ERROR! upload still failed after 3 retries: ${package_filename}"
         notify_message "True" "$(format_error_notice \
@@ -613,6 +657,22 @@ for module_name in "${MODULES[@]}"; do
             "检查网络、WebDAV 配置和传输脚本后重试上传")"
         overall_status=1
         continue
+    fi
+
+    if verify_algorithm_enabled; then
+        if ! upload_with_retry "${package_filename}.${file_verify}" "False"; then
+            log "ERROR! upload still failed after 3 retries: ${package_filename}.${file_verify}"
+            notify_message "True" "$(format_error_notice \
+                "${module_name}/${notify_type}" \
+                "P2" \
+                "处理中" \
+                "校验文件上传连续 3 次失败：${package_filename}.${file_verify}" \
+                "新版本产物校验文件未能同步到制品仓库" \
+                "构建已完成，故障出现在校验文件上传阶段" \
+                "检查网络、WebDAV 配置和传输脚本后重试上传")"
+            overall_status=1
+            continue
+        fi
     fi
 done
 

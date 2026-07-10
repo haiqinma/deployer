@@ -40,6 +40,7 @@ notify_from="${NOTIFY_FROM:-}"
 notify_same_version="${NOTIFY_SAME_VERSION:-False}"
 notify_dingtalk_enabled="${NOTIFY_DINGDING:-False}"
 notify_feishu_enabled="${NOTIFY_FEISHU:-False}"
+file_verify="$(trim "${FILE_VERIFY:-}")"
 
 usage() {
     log "Usage: $0"
@@ -116,7 +117,6 @@ format_error_notice() {
 影响范围：
 - 影响用户：使用 ${title%%/*} 的用户
 - 影响功能：${impact}
-- 影响环境：升级流程
 
 当前判断：
 - ${judgment}
@@ -194,10 +194,50 @@ notify_same_version_enabled() {
     esac
 }
 
+verify_algorithm_enabled() {
+    case "$file_verify" in
+        sha256sum|md5sum)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+validate_file_verify_config() {
+    case "$file_verify" in
+        ""|sha256sum|md5sum)
+            return 0
+            ;;
+        *)
+            log "ERROR! unsupported FILE_VERIFY: ${file_verify}, expected empty, sha256sum or md5sum"
+            return 1
+            ;;
+    esac
+}
+
+verify_downloaded_package() {
+    local filename=$1
+    local verify_filename="${filename}.${file_verify}"
+
+    if [[ ! -f "${package_root}/${verify_filename}" ]]; then
+        log "ERROR! downloaded verify file is missing: ${package_root}/${verify_filename}"
+        return 1
+    fi
+
+    (
+        cd "$package_root"
+        "$file_verify" -c "$verify_filename"
+    ) >> "$LOGFILE" 2>&1
+}
+
 if [[ $# -ne 0 ]]; then
     usage
     exit 1
 fi
+
+validate_file_verify_config || exit 1
 
 load_modules "$config_file" || {
     usage
@@ -293,14 +333,17 @@ for module_name in "${MODULES[@]}"; do
     done
 
     if [[ ${#remote_candidates[@]} -eq 0 ]]; then
+        target_package_names="${module_name}-*.tar.gz"
+        remote_base_url_for_notice=$(trim "${WEBDAV_PACKAGE_BASE_URL:-}")
+        remote_base_url_for_notice="${remote_base_url_for_notice%/}"
         log "ERROR! no remote package found for ${module_name}"
         notify_alert "$(format_error_notice \
             "${module_name}/${notify_type}" \
             "P2" \
-            "处理中" \
-            "未找到可用远程安装包" \
+            "需要处理" \
+            "未在配置的目录中找到目标安装包[${target_package_names}]" \
             "无法为 ${module_name} 执行版本升级" \
-            "远程制品目录中缺少该模块的发布包" \
+            "远程目录[${remote_base_url_for_notice}]缺少缺少该模块的发布包[${target_package_names}]" \
             "检查制品仓库内容并补齐安装包后重新执行升级")"
         if [[ ${#remote_files[@]} -gt 0 ]]; then
             log "remote file samples:"
@@ -363,6 +406,25 @@ for module_name in "${MODULES[@]}"; do
 
     log "upgrade needed for ${module_name}: ${current_version} -> ${target_version}"
 
+    verify_enabled=1
+    if verify_algorithm_enabled; then
+        verify_enabled=0
+        target_verify_filename="${target_filename}.${file_verify}"
+        if ! bash "$transfer_script" download "$target_verify_filename" >> "$LOGFILE" 2>&1; then
+            log "ERROR! failed to download verify file: ${target_verify_filename}"
+            notify_alert "$(format_error_notice \
+                "${module_name}/${notify_type}" \
+                "P2" \
+                "处理中" \
+                "校验文件下载失败：${target_verify_filename}" \
+                "升级流程中断，目标版本无法完成完整性校验" \
+                "制品仓库中缺少校验文件或下载流程失败" \
+                "检查制品仓库校验文件和下载脚本后重试升级")"
+            overall_status=1
+            continue
+        fi
+    fi
+
     if ! bash "$transfer_script" download "$target_filename" >> "$LOGFILE" 2>&1; then
         log "ERROR! failed to download package: ${target_filename}"
         notify_alert "$(format_error_notice \
@@ -388,6 +450,21 @@ for module_name in "${MODULES[@]}"; do
             "升级流程无法继续解压安装包" \
             "下载结果未落到预期目录或文件被清理" \
             "检查制品目录和下载脚本输出后重试升级")"
+        overall_status=1
+        continue
+    fi
+
+    if [[ "$verify_enabled" -eq 0 ]] && ! verify_downloaded_package "$target_filename"; then
+        log "ERROR! package verify failed: ${target_filename}"
+        rm -f "$package_file"
+        notify_alert "$(format_error_notice \
+            "${module_name}/${notify_type}" \
+            "P2" \
+            "处理中" \
+            "软件包校验不通过，等待下一个检测周期或者稍后尝试" \
+            "已删除校验失败的软件包，当前模块升级中止" \
+            "下载的软件包校验结果与校验文件内容不一致" \
+            "等待下一个检测周期或者稍后尝试")"
         overall_status=1
         continue
     fi

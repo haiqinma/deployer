@@ -173,3 +173,73 @@ docker compose exec -T postgres psql -U postgres myapp < backup.sql
 # 备份所有数据库
 docker compose exec -T postgres pg_dumpall -U postgres > backup_all.sql
 ```
+
+## 按数据库定期备份
+
+业务库备份建议使用仓库内的 `database-backup.sh`，按数据库粒度导出，并通过 `backup.conf` 控制哪些库需要备份。
+
+### 1. 配置待备份数据库
+
+先从 `backup.conf.template` 复制出实际配置：
+
+```shell
+cp backup.conf.template backup.conf
+```
+
+然后编辑 `backup.conf`，一行一个数据库名，例如：
+
+```text
+node
+app
+```
+
+如果你的 `init.db/01node.sql` 里创建的是：
+
+```sql
+CREATE USER "yeying" WITH PASSWORD 'dfasfdasf';
+CREATE DATABASE "node" OWNER "yeying";
+GRANT ALL PRIVILEGES ON DATABASE "node" TO "yeying";
+```
+
+那么在 `backup.conf` 里写 `node` 即可。
+
+### 2. 执行备份
+
+脚本默认读取 `/opt/deploy/postgresql/.env`，从中获取：
+
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_PORT`
+
+默认将备份文件写入 `/opt/backup`：
+
+```shell
+chmod +x database-backup.sh
+./database-backup.sh
+```
+
+生成的文件名格式为：
+
+```text
+<database>-YYYYMMDD-HHMMSS.sql.gz
+```
+
+例如：
+
+```text
+/opt/backup/node-20260622-104559.sql.gz
+```
+
+### 3. 定时任务示例
+
+例如每天凌晨 2 点执行一次：
+
+```cron
+0 2 * * * cd /opt/deploy/postgresql && /opt/deploy/postgresql/database-backup.sh >> /var/log/postgresql-backup.log 2>&1
+```
+
+### 4. 恢复示例
+
+```shell
+gunzip -c /opt/backup/node-20260622-104559.sql.gz | docker compose exec -T postgres psql -U "$POSTGRES_USER" -d postgres
+```

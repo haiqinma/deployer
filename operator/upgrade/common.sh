@@ -31,11 +31,11 @@ init_log_file() {
 }
 
 log() {
-    echo -e "$*" | tee -a "$LOGFILE"
+    echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOGFILE"
 }
 
 log_err() {
-    echo -e "$*" | tee -a "$LOGFILE" >&2
+    echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOGFILE" >&2
 }
 
 trim() {
