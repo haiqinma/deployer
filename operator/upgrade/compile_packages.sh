@@ -6,7 +6,7 @@ shopt -s nullglob
 
 script_dir=$(cd "$(dirname "$0")" || exit 1; pwd)
 # shellcheck disable=SC1091
-source "${script_dir}/common.sh"
+source "${script_dir}/../common/common.sh"
 feishu_common_sh="${script_dir}/../feishu-notify/common.sh"
 if [[ -f "$feishu_common_sh" ]]; then
     # shellcheck disable=SC1090

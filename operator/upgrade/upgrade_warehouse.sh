@@ -6,7 +6,7 @@ shopt -s nullglob
 
 script_dir=$(cd "$(dirname "$0")" || exit 1; pwd)
 # shellcheck disable=SC1091
-source "${script_dir}/common.sh"
+source "${script_dir}/../common/common.sh"
 
 init_log_file "upgrade-warehouse.log"
 
