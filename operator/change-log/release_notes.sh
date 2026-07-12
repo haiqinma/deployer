@@ -2,7 +2,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${script_dir}/../upgrade/common.sh"
+source "${script_dir}/../common/common.sh"
 project_root="$(cd "$script_dir/.." && pwd)"
 notify_common_sh="$project_root/feishu-notify/common.sh"
 # 固定配置（按当前发布流程约定）
