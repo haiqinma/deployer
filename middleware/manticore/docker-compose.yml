@@ -1,0 +1,37 @@
+services:
+  manticore:
+    image: ${MANTICORE_IMAGE:-manticoresearch/manticore:28.4.4}
+    container_name: ${MANTICORE_CONTAINER_NAME:-manticore}
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${MANTICORE_SQL_PORT:-9306}:9306"
+      - "${MANTICORE_HTTP_PORT:-9308}:9308"
+      - "${MANTICORE_BIN_PORT:-9312}:9312"
+    environment:
+      TZ: ${TZ}
+      QUERY_LOG_TO_STDOUT: ${QUERY_LOG_TO_STDOUT}
+    volumes:
+      - ./data:/var/lib/manticore
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65535
+        hard: 65535
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h127.0.0.1 -P9306 -e 'SHOW TABLES' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - manticore-network
+
+networks:
+  manticore-network:
+    name: "manticore-network"
+    driver: bridge
