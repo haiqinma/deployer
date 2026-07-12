@@ -28,6 +28,9 @@
 - [LOGGING.md](./LOGGING.md)  
   后台服务日志规范（含 `api.log`、`<service-name>.log`、`error.log` 的职责、字段与示例）
 
+- [API_SPECIFICATION.md](./API_SPECIFICATION.md)  
+  后端接口规范（含 `public`、`admin`、`internal` 分类、路径规则与兼容要求）
+
 ## 新人最短路径（建议）
 
 1. 在社区 Issue/讨论中认领需求，补齐背景与目标。
