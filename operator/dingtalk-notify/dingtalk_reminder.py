@@ -119,7 +119,7 @@ def main():
         print("用法: python dingtalk_reminder.py <scene> [True|False] <message>")
         print("示例1: python dingtalk_reminder.py create_package \"创建包流程开始\"")
         print("示例2: python dingtalk_reminder.py create_package True \"创建包流程开始\"")
-        print("支持场景: create_package, upgrade_service, monitor_service")
+        print("支持场景: create_package, upgrade_service, monitor_service, account_billing")
         sys.exit(1)
 
     scene = sys.argv[1]
@@ -130,8 +130,8 @@ def main():
         need_at = parse_bool_flag(sys.argv[2])
         content = sys.argv[3]
 
-    if scene not in {"create_package", "upgrade_service", "monitor_service"}:
-        print("参数错误，暂不支持此场景，仅支持: create_package, upgrade_service, monitor_service")
+    if scene not in {"create_package", "upgrade_service", "monitor_service", "account_billing"}:
+        print("参数错误，暂不支持此场景，仅支持: create_package, upgrade_service, monitor_service, account_billing")
         sys.exit(1)
 
     send_dingtalk_msg(scene, need_at, content)

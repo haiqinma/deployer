@@ -18,6 +18,7 @@ SUPPORTED_SCENES = {
     "monitor_service",
     "release_notes",
     "backup_database",
+    "account_billing",
 }
 DEFAULT_CHUNK_SIZE = 3000
 
@@ -159,7 +160,7 @@ def main():
     if args.scene:
         if args.scene not in SUPPORTED_SCENES:
             print(
-                "参数错误，暂不支持此场景，仅支持: create_package, upgrade_service, monitor_service, release_notes, backup_database",
+                "参数错误，暂不支持此场景，仅支持: create_package, upgrade_service, monitor_service, release_notes, backup_database, account_billing",
                 file=sys.stderr,
             )
             sys.exit(1)
