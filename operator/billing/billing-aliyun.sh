@@ -10,17 +10,12 @@ python_script="${script_dir}/aliyun.py"
 venv_dir="${script_dir}/venv"
 requirements_file="${script_dir}/requirements.txt"
 dingtalk_script="${project_root}/dingtalk-notify/dingtalk_reminder.py"
-feishu_common_sh="${project_root}/feishu-notify/common.sh"
-dingtalk_scene="${BILLING_ALIYUN_DINGTALK_SCENE:-monitor_service}"
-feishu_scene="${BILLING_ALIYUN_FEISHU_SCENE:-monitor_service}"
+feishu_script="${project_root}/feishu-notify/feishu_reminder.py"
+dingtalk_scene="${BILLING_ALIYUN_DINGTALK_SCENE:-account_billing}"
+feishu_scene="${BILLING_ALIYUN_FEISHU_SCENE:-account_billing}"
 
 # shellcheck disable=SC1091
 source "${project_root}/common/common.sh"
-
-if [[ -f "$feishu_common_sh" ]]; then
-    # shellcheck disable=SC1090
-    source "$feishu_common_sh"
-fi
 
 init_log_file "billing-aliyun.log"
 
@@ -123,24 +118,25 @@ notify_dingtalk() {
 notify_feishu() {
     local message=$1
 
-    if declare -F send_feishu_message >/dev/null 2>&1; then
-        if ! send_feishu_message "$feishu_scene" "$message" >> "$LOGFILE" 2>&1; then
-            log "WARN! failed to send feishu notification"
-        fi
+    if [[ ! -f "$feishu_script" ]]; then
+        log "WARN! feishu script is missing: ${feishu_script}"
         return 0
     fi
 
-    log "WARN! feishu notify helper is missing, skip notification"
+    if ! python3 "$feishu_script" "$feishu_scene" --prefix "" --message "$message" >> "$LOGFILE" 2>&1; then
+        log "WARN! failed to send feishu notification"
+    fi
 }
 
 notify_alarm() {
     local available_cash_amount=$1
     local alarm_time=$2
-    local message
+    local message_body message
 
+    message_body="截至 ${alarm_time}，阿里云帐号余额为 ${available_cash_amount}元，请尽快评估是否需要充值"
     message=$(cat <<EOF
-[余额告警]
-截至 ${alarm_time}，阿里云帐号余额为 ${available_cash_amount}元，请尽快评估是否需要充值
+[账户监控]
+${message_body}
 EOF
 )
 
