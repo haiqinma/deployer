@@ -92,7 +92,6 @@ if [[ "$WEBDAV_FLAG" == "all" || "$WEBDAV_FLAG" == "backend" ]]; then
     [[ -f "${current_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${current_dir}/scripts/starter.sh"; exit 1; }
     [[ -f "${target_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${target_dir}/scripts/starter.sh"; exit 1; }
     [[ -f "${current_dir}/config.yaml" ]] || { log "ERROR! missing config: ${current_dir}/config.yaml"; exit 1; }
-    [[ -f "${current_dir}/.env" ]] || { log "ERROR! missing env file: ${current_dir}/.env"; exit 1; }
 
     log "stop current warehouse: cd ${current_dir} && scripts/starter.sh stop"
     if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); then
@@ -102,8 +101,6 @@ if [[ "$WEBDAV_FLAG" == "all" || "$WEBDAV_FLAG" == "backend" ]]; then
 
     cp -f "${current_dir}/config.yaml" "${target_dir}/config.yaml"
     log "copied config: ${current_dir}/config.yaml -> ${target_dir}/config.yaml"
-    cp -f "${current_dir}/.env" "${target_dir}/.env"
-    log "copied env file: ${current_dir}/.env -> ${target_dir}/.env"
 
     log "start target warehouse: cd ${target_dir} && scripts/starter.sh"
     if ! (cd "$target_dir" && bash scripts/starter.sh >> "$LOGFILE" 2>&1); then
