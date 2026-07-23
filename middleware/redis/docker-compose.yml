@@ -2,7 +2,7 @@ services:
   redis:
     # 1. 锁定 LTS 版本 7.2，使用 alpine 镜像减小体积
     image: redis:7.2.6-alpine
-    container_name: redis-server
+    container_name: redis
     restart: unless-stopped
     # 2. 端口映射策略
     ports:
