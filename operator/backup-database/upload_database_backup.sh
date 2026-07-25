@@ -183,16 +183,16 @@ main() {
 
     for module_name in "${MODULES[@]}"; do
         if ! backup_file=$(find_latest_backup_file "$module_name"); then
-            log "no database backup file found for module: ${module_name}"
-            notify_feishu "${module_name}模块没有需要备份的数据库文件"
+            log "no database backup file found for database: ${module_name}"
+            notify_feishu "DATABASE [ ${module_name} ] 没有需要备份的数据库文件"
             continue
         fi
 
         log "upload latest database backup file for ${module_name}: ${backup_file}"
         if upload_backup_file "$backup_file"; then
-            notify_feishu "${module_name}模块的数据库备份文件 ${backup_file} 上传成功"
+            notify_feishu "DATABASE [ ${module_name} ] 数据库备份文件 ${backup_file} 上传成功"
         else
-            notify_feishu "${module_name}模块的数据库备份文件 ${backup_file} 上传失败"
+            notify_feishu "DATABASE [ ${module_name} ] 数据库备份文件 ${backup_file} 上传失败"
             exit 1
         fi
     done
