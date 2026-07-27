@@ -181,8 +181,8 @@ upload_with_retry() {
     if [[ -z "$module_name" || "$module_name" == "$filename" ]]; then
         module_name="构建产物"
     fi
-    if artifact_info_from_name "$module_name" "$filename"; then
-        version="v${PACKAGE_VERSION}"
+    if parse_package_name "$module_name" "$filename"; then
+        version="v${PARSED_PACKAGE_VERSION}"
     else
         version="$filename"
     fi
@@ -372,8 +372,19 @@ parse_package_name() {
     PARSED_PACKAGE_VERSION=""
     PARSED_PACKAGE_COMMIT=""
 
-    stem=${package_name%.tar.gz}
-    if [[ "$stem" == "$package_name" || "$stem" != "${module_name}-"* ]]; then
+    case "$package_name" in
+        *.tar.gz)
+            stem=${package_name%.tar.gz}
+            ;;
+        *.zip)
+            stem=${package_name%.zip}
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+
+    if [[ "$stem" != "${module_name}-"* ]]; then
         return 1
     fi
 
@@ -433,7 +444,9 @@ capture_output_package_state() {
     local package_path package_name package_hash
 
     : > "$state_file"
-    for package_path in "${module_dir}/output/${module_name}-"*.tar.gz; do
+    for package_path in \
+        "${module_dir}/output/${module_name}-"*.tar.gz \
+        "${module_dir}/output/${module_name}-"*.zip; do
         [[ -f "$package_path" ]] || continue
         package_name=$(basename "$package_path")
         package_hash=$(sha256sum "$package_path" | awk '{print $1}')
@@ -488,7 +501,10 @@ for module_name in "${MODULES[@]}"; do
     need_build=0
     build_reason=""
 
-    local_packages=("${package_root}/${module_name}-"*.tar.gz)
+    local_packages=(
+        "${package_root}/${module_name}-"*.tar.gz
+        "${package_root}/${module_name}-"*.zip
+    )
     if [[ ${#local_packages[@]} -eq 0 ]]; then
         need_build=1
         build_reason="no local package found in ${package_root}"
@@ -546,13 +562,16 @@ for module_name in "${MODULES[@]}"; do
         continue
     fi
 
-    output_packages=("${module_dir}/output/${module_name}-"*.tar.gz)
+    output_packages=(
+        "${module_dir}/output/${module_name}-"*.tar.gz
+        "${module_dir}/output/${module_name}-"*.zip
+    )
     if [[ ${#output_packages[@]} -eq 0 ]]; then
-        log "ERROR! package file not found: ${module_dir}/output/${module_name}-*.tar.gz"
+        log "ERROR! package file not found: ${module_dir}/output/${module_name}-*.{tar.gz,zip}"
         rm -f "$build_state_before"
         notify_build_failure \
             "$module_name" \
-            "构建完成后未找到产物：${module_dir}/output/${module_name}-*.tar.gz" \
+            "构建完成后未找到产物：${module_dir}/output/${module_name}-*.{tar.gz,zip}" \
             "构建脚本执行结束，但未生成符合命名规则的压缩包" \
             "检查 output 目录和产物命名规则后重新打包"
         overall_status=1
