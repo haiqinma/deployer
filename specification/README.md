@@ -31,6 +31,12 @@
 - [API_SPECIFICATION.md](./API_SPECIFICATION.md)  
   后端接口规范（含 `public`、`admin`、`internal` 分类、路径规则与兼容要求）
 
+- [HEALTH_CHECK.md](./HEALTH_CHECK.md)
+  项目健康检查脚本规范（含统一入口、检查层级、参数、退出码、JSON 输出与升级接入流程）
+
+- [AUTOMATED_TESTING.md](./AUTOMATED_TESTING.md)
+  项目自动化测试脚本规范（含测试分层、统一入口、报告格式、测试数据隔离与升级后 smoke 测试）
+
 ## 新人最短路径（建议）
 
 1. 在社区 Issue/讨论中认领需求，补齐背景与目标。
