@@ -64,9 +64,18 @@ git pull --rebase origin main
 - 配置模板
 - 前端静态资源
 - 启动脚本 `scripts/starter.sh`
+- 健康检查脚本 `scripts/health-check.sh`
+- 升级后验证所需的 `scripts/test.sh` 和 smoke 测试资源
 - 启动所需的其他必要资源文件
 
 要求是：解压安装包后，进入目录即可直接执行 `scripts/starter.sh` 完成启动验证。
+
+健康检查脚本和自动化测试脚本应分别遵守：
+
+- [HEALTH_CHECK.md](./HEALTH_CHECK.md)
+- [AUTOMATED_TESTING.md](./AUTOMATED_TESTING.md)
+
+如果 smoke 测试作为独立测试包交付，测试包必须与安装包使用相同版本标识，并在部署文档中写清获取和执行方式。
 
 ### 前端依赖处理
 
@@ -188,7 +197,8 @@ v1.0.1
 3. 解压安装包。
 4. 进入解压后的目录。
 5. 执行 `scripts/starter.sh`。
-6. 确认服务能够正常启动。
+6. 执行 `scripts/health-check.sh --level readiness`，确认服务已经就绪。
+7. 执行 `scripts/test.sh --suite smoke`，确认核心功能能够正常工作。
 
 建议验证命令：
 
@@ -196,6 +206,8 @@ v1.0.1
 tar -xzf output/<package-name>.tar.gz
 cd <package-name>
 ./scripts/starter.sh
+./scripts/health-check.sh --level readiness
+./scripts/test.sh --suite smoke
 ```
 
 ## 禁止事项

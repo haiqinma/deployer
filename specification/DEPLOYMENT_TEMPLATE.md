@@ -29,6 +29,8 @@
 - 部署文档必须引用打包规范 [PACKAGING.md](./PACKAGING.md)
 - 部署对象必须是安装包，而不是开发目录
 - 启动入口必须是安装包内的 `scripts/starter.sh`
+- 健康检查入口必须遵守 [HEALTH_CHECK.md](./HEALTH_CHECK.md)，统一使用 `scripts/health-check.sh`
+- 升级后的功能验证必须遵守 [AUTOMATED_TESTING.md](./AUTOMATED_TESTING.md)，统一使用 `scripts/test.sh --suite smoke`
 - 配置说明必须以安装包内实际提供的配置模板为准，例如 `.env.template`、`config.yaml.template`、`config.js.template`
 - 文档中不得出现“直接在开发目录执行”的部署方式，除非明确标记为开发调试，不属于正式部署
 
@@ -72,9 +74,12 @@
 必须说明如何确认安装包部署成功，例如：
 
 - `scripts/starter.sh` 执行后服务正常启动
-- 端口监听正常
-- 日志中无启动失败信息
-- 访问健康检查接口返回正常
+- `scripts/health-check.sh --level readiness` 返回成功
+- `scripts/health-check.sh --level all` 确认关键依赖正常
+- `scripts/test.sh --suite smoke` 确认核心业务链路正常
+- 日志中无启动失败或测试执行错误
+
+不能只把“进程存在”或“端口监听”作为部署成功标准。服务健康与核心功能验证都通过后，才能恢复流量或完成升级。
 
 ### 6. 回滚方式
 
@@ -263,17 +268,22 @@ openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24; echo
 
 如果项目没有 `status` 子命令，替换为实际验证命令。
 
-### 5.2 端口或进程验证
+### 5.2 健康检查
 
 ```bash
-<填写实际命令>
+./scripts/health-check.sh --level readiness
+./scripts/health-check.sh --level all --format json
 ```
 
-### 5.3 功能验证
+补充本项目实际包含的 liveness、readiness 和 dependency 检查项，以及哪些依赖属于必需依赖或可选依赖。
+
+### 5.3 核心功能验证
 
 ```bash
-<填写健康检查、接口调用或页面访问方式>
+./scripts/test.sh --suite smoke
 ```
+
+补充 smoke 套件覆盖的核心业务路径、测试账号或租户、测试数据清理方式和预计执行时间。
 
 ### 5.4 日志验证
 
