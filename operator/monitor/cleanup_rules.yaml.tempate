@@ -1,0 +1,159 @@
+# 全局开关：设为 true 时只打印日志不真正删除文件
+dry_run: true
+
+# 清理规则配置
+cleanup_rules:
+  - path: "/opt/package"
+    type: "file"
+    prefix: "chat-"
+    suffix: ".tar.gz"
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/opt/package"
+    type: "file"
+    prefix: "chat-"
+    suffix: ".tar.gz.sha256sum"
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/opt/deploy"
+    type: "folder"
+    prefix: "chat-v"
+    suffix: ""
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/root/code/chat/output"
+    type: "file"
+    prefix: "chat-"
+    suffix: ".tar.gz"
+    keep_count: 3
+    sort_by: "mtime"
+
+  - path: "/opt/package"
+    type: "file"
+    prefix: "node-"
+    suffix: ".tar.gz"
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/opt/package"
+    type: "file"
+    prefix: "node-"
+    suffix: ".tar.gz.sha256sum"
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/opt/deploy"
+    type: "folder"
+    prefix: "node-v"
+    suffix: ""
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/root/code/node/output"
+    type: "file"
+    prefix: "node-"
+    suffix: ".tar.gz"
+    keep_count: 3
+    sort_by: "mtime"
+
+
+  - path: "/opt/package"
+    type: "file"
+    prefix: "router-"
+    suffix: ".tar.gz"
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/opt/package"
+    type: "file"
+    prefix: "router-"
+    suffix: ".tar.gz.sha256sum"
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/opt/deploy"
+    type: "folder"
+    prefix: "router-v"
+    suffix: ""
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/root/code/router/output"
+    type: "file"
+    prefix: "router-"
+    suffix: ".tar.gz"
+    keep_count: 3
+    sort_by: "mtime"
+
+  - path: "/opt/package"
+    type: "file"
+    prefix: "project-"
+    suffix: ".tar.gz"
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/opt/package"
+    type: "file"
+    prefix: "project-"
+    suffix: ".tar.gz.sha256sum"
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/opt/deploy"
+    type: "folder"
+    prefix: "project-v"
+    suffix: ""
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/root/code/project/output"
+    type: "file"
+    prefix: "project-"
+    suffix: ".tar.gz"
+    keep_count: 3
+    sort_by: "mtime"
+
+  - path: "/opt/package"
+    type: "file"
+    prefix: "warehouse-"
+    suffix: ".tar.gz"
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/opt/package"
+    type: "file"
+    prefix: "warehouse-"
+    suffix: ".tar.gz.sha256sum"
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/opt/deploy"
+    type: "folder"
+    prefix: "warehouse-v"
+    suffix: ""
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/root/code/warehouse/output"
+    type: "file"
+    prefix: "warehouse-"
+    suffix: ".tar.gz"
+    keep_count: 3
+    sort_by: "mtime"
+
+  - path: "/opt/package"
+    type: "file"
+    prefix: "wallet-v"
+    suffix: ".zip"
+    keep_count: 5
+    sort_by: "mtime"
+
+  - path: "/root/code/wallet/output"
+    type: "file"
+    prefix: "wallet-"
+    suffix: ".tar.gz"
+    keep_count: 3
+    sort_by: "mtime"
