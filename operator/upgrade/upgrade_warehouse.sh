@@ -107,6 +107,23 @@ if [[ "$WEBDAV_FLAG" == "all" || "$WEBDAV_FLAG" == "backend" ]]; then
         log "ERROR! failed to start target warehouse service"
         exit 1
     fi
+
+    if [[ -f "${target_dir}/scripts/health-check.sh" ]]; then
+        log "health check target warehouse: cd ${target_dir} && scripts/health-check.sh --level all"
+        set +e
+        (cd "$target_dir" && bash scripts/health-check.sh --level all >> "$LOGFILE" 2>&1)
+        health_check_status=$?
+        set -e
+
+        if [[ $health_check_status -ne 0 ]]; then
+            log "ERROR! warehouse health check failed with exit code ${health_check_status}"
+            exit "$health_check_status"
+        fi
+
+        log "warehouse health check passed"
+    else
+        log "WARN! skip warehouse health check, script is missing: ${target_dir}/scripts/health-check.sh"
+    fi
 fi
 
 if [[ "$WEBDAV_FLAG" == "all" || "$WEBDAV_FLAG" == "frontend" ]]; then
