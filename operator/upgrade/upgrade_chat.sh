@@ -85,4 +85,21 @@ if ! (cd "$target_dir" && bash scripts/starter.sh >> "$LOGFILE" 2>&1); then
     exit 1
 fi
 
+if [[ -f "${target_dir}/scripts/health-check.sh" ]]; then
+    log "health check target chat: cd ${target_dir} && scripts/health-check.sh --level all"
+    set +e
+    (cd "$target_dir" && bash scripts/health-check.sh --level all >> "$LOGFILE" 2>&1)
+    health_check_status=$?
+    set -e
+
+    if [[ $health_check_status -ne 0 ]]; then
+        log "ERROR! chat health check failed with exit code ${health_check_status}"
+        exit "$health_check_status"
+    fi
+
+    log "chat health check passed"
+else
+    log "WARN! skip chat health check, script is missing: ${target_dir}/scripts/health-check.sh"
+fi
+
 log "chat upgrade done: ${current_version} -> ${target_version}"

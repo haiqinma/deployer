@@ -125,10 +125,12 @@ def process_file_rule(rule, dry_run, logger):
                 logger.error(f"[失败] 删除文件失败 {f}: {e}")
 
 def process_folder_rule(rule, dry_run, logger):
-    """处理文件夹类型的清理规则（文件夹通常直接删除匹配项）"""
+    """处理文件夹类型的清理规则"""
     path = rule['path']
     prefix = rule.get('prefix', '')
     suffix = rule.get('suffix', '')
+    keep_count = rule.get('keep_count', 0)
+    sort_by = rule.get('sort_by', 'mtime')
 
     pattern = os.path.join(path, f"{prefix}*{suffix}")
     folders = [f for f in glob.glob(pattern) if os.path.isdir(f)]
@@ -137,8 +139,23 @@ def process_folder_rule(rule, dry_run, logger):
         logger.info(f"[跳过] {path} 下未找到匹配的文件夹。")
         return
 
-    logger.info(f"[执行] 在 {path} 下找到 {len(folders)} 个匹配文件夹，准备删除。")
-    for folder in folders:
+    try:
+        if sort_by == 'ctime':
+            folders.sort(key=lambda x: os.path.getctime(x), reverse=True)
+        else:  # 默认 mtime
+            folders.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+    except Exception as e:
+        logger.error(f"排序文件夹时出错: {e}")
+        return
+
+    folders_to_delete = folders[keep_count:]
+
+    if not folders_to_delete:
+        logger.info(f"[跳过] {path} 下匹配文件夹数({len(folders)}) <= 保留数({keep_count})，无需清理。")
+        return
+
+    logger.info(f"[执行] 在 {path} 下找到 {len(folders)} 个文件夹，保留 {keep_count} 个，准备删除 {len(folders_to_delete)} 个。")
+    for folder in folders_to_delete:
         if dry_run:
             logger.info(f"[DRY RUN] 模拟删除文件夹: {folder}")
         else:
