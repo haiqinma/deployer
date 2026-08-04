@@ -1,0 +1,15 @@
+services:
+  plantuml:
+    # PlantUML Server，默认使用 Jetty 运行时
+    image: plantuml/plantuml-server:${PLANTUML_VERSION:-jetty}
+    container_name: plantuml
+    restart: unless-stopped
+    ports:
+      - "${PLANTUML_PORT:-18080}:8080"
+    networks:
+      - plantuml-network
+
+networks:
+  plantuml-network:
+    name: plantuml-network
+    driver: bridge
