@@ -25,6 +25,9 @@
 - [PACKAGING.md](./PACKAGING.md)  
   打包相关规范
 
+- [UPGRADE.md](./UPGRADE.md)  
+  升级操作说明（含打包上传、升级执行、模块差异、验证与回退）
+
 - [LOGGING.md](./LOGGING.md)  
   后台服务日志规范（含 `api.log`、`<service-name>.log`、`error.log` 的职责、字段与示例）
 
