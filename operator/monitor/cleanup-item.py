@@ -7,6 +7,7 @@ import glob
 import shutil
 import logging
 import importlib.util
+import select
 from pathlib import Path
 
 # ================= 依赖检查区 =================
@@ -84,6 +85,20 @@ def validate_rule(rule, logger):
         return False
     return True
 
+def confirm_delete(item_type, target, timeout=5):
+    """删除前确认：5 秒内输入 y/Y 才执行删除。"""
+    sys.stdout.write(f"确认删除{item_type}: {target} ? 请输入 y/Y 确认（{timeout}秒内）：")
+    sys.stdout.flush()
+
+    ready, _, _ = select.select([sys.stdin], [], [], timeout)
+    if not ready:
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        return False
+
+    answer = sys.stdin.readline().strip()
+    return answer in ("y", "Y")
+
 def process_file_rule(rule, dry_run, logger):
     """处理文件类型的清理规则"""
     path = rule['path']
@@ -118,6 +133,9 @@ def process_file_rule(rule, dry_run, logger):
         if dry_run:
             logger.info(f"[DRY RUN] 模拟删除文件: {f}")
         else:
+            if not confirm_delete("文件", f):
+                logger.info(f"[跳过] 未确认删除文件: {f}")
+                continue
             try:
                 os.remove(f)
                 logger.info(f"[成功] 已删除文件: {f}")
@@ -159,6 +177,9 @@ def process_folder_rule(rule, dry_run, logger):
         if dry_run:
             logger.info(f"[DRY RUN] 模拟删除文件夹: {folder}")
         else:
+            if not confirm_delete("文件夹", folder):
+                logger.info(f"[跳过] 未确认删除文件夹: {folder}")
+                continue
             try:
                 shutil.rmtree(folder)
                 logger.info(f"[成功] 已删除文件夹: {folder}")
