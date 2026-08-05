@@ -79,6 +79,19 @@ else
 fi
 
 WEBDAV_FLAG=$(trim "${WEBDAV_FLAG:-all}")
+WAIT_SECONDS=$(trim "${WAIT_SECONDS:-0}")
+RETRY_TIMES=$(trim "${RETRY_TIMES:-0}")
+
+if ! [[ "$WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
+    log "ERROR! invalid WAIT_SECONDS: ${WAIT_SECONDS}, expected a non-negative integer"
+    exit 1
+fi
+
+if ! [[ "$RETRY_TIMES" =~ ^[0-9]+$ ]]; then
+    log "ERROR! invalid RETRY_TIMES: ${RETRY_TIMES}, expected a non-negative integer"
+    exit 1
+fi
+
 case "$WEBDAV_FLAG" in
     all|backend|frontend)
         ;;
@@ -109,14 +122,28 @@ if [[ "$WEBDAV_FLAG" == "all" || "$WEBDAV_FLAG" == "backend" ]]; then
     fi
 
     if [[ -f "${target_dir}/scripts/health-check.sh" ]]; then
-        log "health check target warehouse: cd ${target_dir} && scripts/health-check.sh --level all"
-        set +e
-        (cd "$target_dir" && bash scripts/health-check.sh --level all >> "$LOGFILE" 2>&1)
-        health_check_status=$?
-        set -e
+        health_check_status=0
+        max_health_check_attempts=$((RETRY_TIMES + 1))
+
+        for ((attempt = 1; attempt <= max_health_check_attempts; attempt++)); do
+            if (( WAIT_SECONDS > 0 )); then
+                log "wait ${WAIT_SECONDS}s before warehouse health check attempt ${attempt}/${max_health_check_attempts}"
+                sleep "$WAIT_SECONDS"
+            fi
+
+            log "health check target warehouse attempt ${attempt}/${max_health_check_attempts}: cd ${target_dir} && scripts/health-check.sh --level all"
+            if (cd "$target_dir" && bash scripts/health-check.sh --level all >> "$LOGFILE" 2>&1); then
+                health_check_status=0
+                break
+            else
+                health_check_status=$?
+            fi
+
+            log "warehouse health check failed on attempt ${attempt}/${max_health_check_attempts} with exit code ${health_check_status}"
+        done
 
         if [[ $health_check_status -ne 0 ]]; then
-            log "ERROR! warehouse health check failed with exit code ${health_check_status}"
+            log "ERROR! warehouse health check failed after ${max_health_check_attempts} attempt(s)"
             exit "$health_check_status"
         fi
 

@@ -10,6 +10,8 @@ source "${script_dir}/../common/common.sh"
 
 init_log_file "upgrade-project.log"
 
+env_file="${script_dir}/.env"
+
 module_name="project"
 deploy_root="/opt/deploy"
 
@@ -66,6 +68,26 @@ target_dir=$(resolve_version_dir "$target_version") || {
 log "current dir: ${current_dir}"
 log "target dir: ${target_dir}"
 
+if [[ -f "$env_file" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$env_file"
+    set +a
+fi
+
+WAIT_SECONDS=$(trim "${WAIT_SECONDS:-0}")
+RETRY_TIMES=$(trim "${RETRY_TIMES:-0}")
+
+if ! [[ "$WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
+    log "ERROR! invalid WAIT_SECONDS: ${WAIT_SECONDS}, expected a non-negative integer"
+    exit 1
+fi
+
+if ! [[ "$RETRY_TIMES" =~ ^[0-9]+$ ]]; then
+    log "ERROR! invalid RETRY_TIMES: ${RETRY_TIMES}, expected a non-negative integer"
+    exit 1
+fi
+
 [[ -f "${current_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${current_dir}/scripts/starter.sh"; exit 1; }
 [[ -f "${target_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${target_dir}/scripts/starter.sh"; exit 1; }
 [[ -f "${current_dir}/.env" ]] || { log "ERROR! missing env file: ${current_dir}/.env"; exit 1; }
@@ -83,6 +105,37 @@ log "start target project: cd ${target_dir} && scripts/starter.sh"
 if ! (cd "$target_dir" && bash scripts/starter.sh >> "$LOGFILE" 2>&1); then
     log "ERROR! failed to start target project service"
     exit 1
+fi
+
+if [[ -f "${target_dir}/scripts/health-check.sh" ]]; then
+    health_check_status=0
+    max_health_check_attempts=$((RETRY_TIMES + 1))
+
+    for ((attempt = 1; attempt <= max_health_check_attempts; attempt++)); do
+        if (( WAIT_SECONDS > 0 )); then
+            log "wait ${WAIT_SECONDS}s before project health check attempt ${attempt}/${max_health_check_attempts}"
+            sleep "$WAIT_SECONDS"
+        fi
+
+        log "health check target project attempt ${attempt}/${max_health_check_attempts}: cd ${target_dir} && scripts/health-check.sh --level all"
+        if (cd "$target_dir" && bash scripts/health-check.sh --level all >> "$LOGFILE" 2>&1); then
+            health_check_status=0
+            break
+        else
+            health_check_status=$?
+        fi
+
+        log "project health check failed on attempt ${attempt}/${max_health_check_attempts} with exit code ${health_check_status}"
+    done
+
+    if [[ $health_check_status -ne 0 ]]; then
+        log "ERROR! project health check failed after ${max_health_check_attempts} attempt(s)"
+        exit "$health_check_status"
+    fi
+
+    log "project health check passed"
+else
+    log "WARN! skip project health check, script is missing: ${target_dir}/scripts/health-check.sh"
 fi
 
 log "project upgrade done: ${current_version} -> ${target_version}"
