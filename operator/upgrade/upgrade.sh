@@ -156,6 +156,36 @@ notify_feishu() {
     fi
 }
 
+notify_feishu_webhook() {
+    local message=$1
+    local webhook_var=$2
+    local secret_var=${3:-}
+    local prefix_var=${4:-}
+    local webhook="" secret="" prefix=""
+
+    if ! declare -F feishu_notify_load_config >/dev/null 2>&1; then
+        return 0
+    fi
+
+    feishu_notify_load_config
+    webhook="${!webhook_var:-}"
+    if [[ -n "$secret_var" ]]; then
+        secret="${!secret_var:-}"
+    fi
+    if [[ -n "$prefix_var" ]]; then
+        prefix="${!prefix_var:-}"
+    fi
+
+    if [[ -z "$webhook" ]]; then
+        log "WARN! feishu webhook is missing: ${webhook_var}"
+        return 0
+    fi
+
+    if ! python3 "$feishu_reminder_script" --webhook "$webhook" --secret "$secret" --prefix "$prefix" --message "$message" >> "$LOGFILE" 2>&1; then
+        log "WARN! failed to send feishu notification: ${webhook_var}"
+    fi
+}
+
 notify_message() {
     local need_at=$1
     local message=$2
@@ -180,7 +210,18 @@ notify_info() {
 
 notify_alert() {
     local message=$1
-    notify_message "$dingtalk_force_at" "$message"
+
+    case "${notify_dingtalk_enabled}" in
+        True|true)
+            notify_dingtalk "$dingtalk_force_at" "$message"
+            ;;
+    esac
+
+    case "${notify_feishu_enabled}" in
+        True|true)
+            notify_feishu_webhook "$message" "UPGRADE_SERVICE_WEBHOOK_URL_FAILURE" "UPGRADE_SERVICE_SECRET" "UPGRADE_SERVICE_PREFIX"
+            ;;
+    esac
 }
 
 notify_same_version_enabled() {
