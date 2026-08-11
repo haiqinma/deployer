@@ -268,6 +268,36 @@ notify_feishu() {
     fi
 }
 
+notify_feishu_webhook() {
+    local message=$1
+    local webhook_var=$2
+    local secret_var=${3:-}
+    local prefix_var=${4:-}
+    local webhook="" secret="" prefix=""
+
+    if ! declare -F feishu_notify_load_config >/dev/null 2>&1; then
+        return 0
+    fi
+
+    feishu_notify_load_config
+    webhook="${!webhook_var:-}"
+    if [[ -n "$secret_var" ]]; then
+        secret="${!secret_var:-}"
+    fi
+    if [[ -n "$prefix_var" ]]; then
+        prefix="${!prefix_var:-}"
+    fi
+
+    if [[ -z "$webhook" ]]; then
+        log "WARN! feishu webhook is missing: ${webhook_var}"
+        return 0
+    fi
+
+    if ! python3 "$feishu_reminder_script" --webhook "$webhook" --secret "$secret" --prefix "$prefix" --message "$message" >> "$LOGFILE" 2>&1; then
+        log "WARN! failed to send feishu notification: ${webhook_var}"
+    fi
+}
+
 notify_message() {
     local need_at=$1
     local message=$2
@@ -290,8 +320,9 @@ notify_build_failure() {
     local symptom=$2
     local action=$3
     local next_step=$4
+    local message
 
-    notify_message "True" "$(format_error_notice \
+    message="$(format_error_notice \
         "${module_name}/${notify_type}" \
         "P2" \
         "处理中" \
@@ -299,6 +330,18 @@ notify_build_failure() {
         "新版本产物未完成构建" \
         "${action}" \
         "${next_step}")"
+
+    case "${notify_dingtalk_enabled}" in
+        True|true)
+            notify_dingtalk "True" "$message"
+            ;;
+    esac
+
+    case "${notify_feishu_enabled}" in
+        True|true)
+            notify_feishu_webhook "$message" "CREATE_PACKAGE_WEBHOOK_URL_FAILURE" "CREATE_PACKAGE_SECRET" "CREATE_PACKAGE_PREFIX"
+            ;;
+    esac
 }
 
 notify_release_notes_failure() {
@@ -306,8 +349,9 @@ notify_release_notes_failure() {
     local symptom=$2
     local action=$3
     local next_step=$4
+    local message
 
-    notify_message "True" "$(format_error_notice \
+    message="$(format_error_notice \
         "${module_name}/发布通知" \
         "P2" \
         "处理中" \
@@ -315,6 +359,18 @@ notify_release_notes_failure() {
         "release notes 未生成或未更新" \
         "${action}" \
         "${next_step}")"
+
+    case "${notify_dingtalk_enabled}" in
+        True|true)
+            notify_dingtalk "True" "$message"
+            ;;
+    esac
+
+    case "${notify_feishu_enabled}" in
+        True|true)
+            notify_feishu_webhook "$message" "RELEASE_NOTES_WEBHOOK_URL_FAILURE" "RELEASE_NOTES_SECRET" "RELEASE_NOTES_PREFIX"
+            ;;
+    esac
 }
 
 if [[ $# -ne 0 ]]; then
