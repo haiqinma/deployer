@@ -106,6 +106,8 @@ log "copied config: ${current_dir}/config.js -> ${target_dir}/config.js"
 cp -Rf "${current_dir}/run/." "${target_dir}/run/"
 log "copied run: ${current_dir}/run -> ${target_dir}/run"
 
+copy_backup_config_files "$current_dir" "$target_dir"
+
 log "start target node: cd ${target_dir} && scripts/starter.sh"
 if ! (cd "$target_dir" && bash scripts/starter.sh 2>&1 | tee -a "$LOGFILE"); then
     log "ERROR! failed to start target node service"

@@ -417,6 +417,7 @@ for module_name in "${MODULES[@]}"; do
     current_version=""
     if find_current_version_from_deploy_dirs "$module_name"; then
         current_version="$SELECTED_VERSION"
+        current_dir="${deploy_root}/${SELECTED_NAME}"
         log "current version: ${current_version}"
     else
         log "ERROR! current version directory not found in ${deploy_root} for ${module_name}"
@@ -524,6 +525,8 @@ for module_name in "${MODULES[@]}"; do
     fi
     log "package extracted to ${EXTRACTED_DIR}"
 
+    copy_backup_config_files "$current_dir" "$EXTRACTED_DIR"
+
     upgrade_script="${script_dir}/upgrade_${module_name}.sh"
     if [[ ! -f "$upgrade_script" ]]; then
         log "ERROR! upgrade script is missing: ${upgrade_script}"
@@ -573,6 +576,23 @@ for module_name in "${MODULES[@]}"; do
         "${module_name}/服务升级" \
         "v${target_version}" \
         "已完成版本升级：v${current_version} -> v${target_version}")"
+
+    active_module_dir="${deploy_root}/${module_name}"
+    config_backup_script="${active_module_dir}/scripts/config_backup.sh"
+    if [[ ! -f "$config_backup_script" ]]; then
+        log "无法进行备份和上传操作，配置备份脚本不存在：${config_backup_script}"
+    else
+        log "config backup： ${module_name}"
+        if (cd "$active_module_dir" && bash scripts/config_backup.sh >> "$LOGFILE" 2>&1); then
+            sleep 5
+            log "config backup upload： ${module_name}"
+            if ! bash "${script_dir}/../backup-config/upload_config_backup.sh" "${module_name}" >> "$LOGFILE" 2>&1; then
+                log "ERROR! config backup upload failed: ${module_name}"
+            fi
+        else
+            log "ERROR! config backup failed: ${module_name}"
+        fi
+    fi
 done
 
 log "\nupgrade done. [$(date)]"
