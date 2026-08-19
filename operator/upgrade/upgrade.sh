@@ -15,6 +15,7 @@ fi
 
 init_log_file "upgrade.log"
 
+lock_file="${UPGRADE_LOCK_FILE:-/tmp/operator-upgrade.lock}"
 config_file="${script_dir}/modules.conf"
 env_file="${script_dir}/.env"
 package_root="/opt/package"
@@ -26,6 +27,18 @@ dingtalk_force_at="True"
 feishu_scene="upgrade_service"
 overall_status=0
 notify_type="版本升级"
+
+acquire_upgrade_lock() {
+    exec 200>"$lock_file"
+    if ! flock -n 200; then
+        log "ERROR! another upgrade task is running, lock file: ${lock_file}"
+        exit 1
+    fi
+
+    log "acquired lock: ${lock_file}"
+}
+
+acquire_upgrade_lock
 
 if ! declare -F copy_backup_config_files >/dev/null 2>&1; then
     copy_backup_config_files() {

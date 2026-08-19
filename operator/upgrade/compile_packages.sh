@@ -19,6 +19,7 @@ export PATH="/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 
 init_log_file "check-code-status.log"
 
+lock_file="${COMPILE_PACKAGES_LOCK_FILE:-/tmp/operator-compile-packages.lock}"
 config_file="${script_dir}/modules.conf"
 env_file="${script_dir}/.env"
 code_root="/root/code"
@@ -30,6 +31,18 @@ dingtalk_scene="create_package"
 feishu_scene="create_package"
 overall_status=0
 notify_type="版本生成"
+
+acquire_compile_lock() {
+    exec 200>"$lock_file"
+    if ! flock -n 200; then
+        log "ERROR! another compile packages task is running, lock file: ${lock_file}"
+        exit 1
+    fi
+
+    log "acquired lock: ${lock_file}"
+}
+
+acquire_compile_lock
 
 if [[ -f "$env_file" ]]; then
     # shellcheck disable=SC1090
