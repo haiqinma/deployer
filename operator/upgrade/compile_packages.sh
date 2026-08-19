@@ -373,6 +373,22 @@ notify_release_notes_failure() {
     esac
 }
 
+notify_upload_failure() {
+    local message=$1
+
+    case "${notify_dingtalk_enabled}" in
+        True|true)
+            notify_dingtalk "True" "$message"
+            ;;
+    esac
+
+    case "${notify_feishu_enabled}" in
+        True|true)
+            notify_feishu_webhook "$message" "CREATE_PACKAGE_WEBHOOK_URL_FAILURE" "CREATE_PACKAGE_SECRET" "CREATE_PACKAGE_PREFIX"
+            ;;
+    esac
+}
+
 if [[ $# -ne 0 ]]; then
     usage
     exit 1
@@ -722,7 +738,7 @@ for module_name in "${MODULES[@]}"; do
 
     if ! upload_with_retry "$package_filename"; then
         log "ERROR! upload still failed after 3 retries: ${package_filename}"
-        notify_message "True" "$(format_error_notice \
+        notify_upload_failure "$(format_error_notice \
             "${module_name}/${notify_type}" \
             "P2" \
             "处理中" \
@@ -737,7 +753,7 @@ for module_name in "${MODULES[@]}"; do
     if verify_algorithm_enabled; then
         if ! upload_with_retry "${package_filename}.${file_verify}" "False"; then
             log "ERROR! upload still failed after 3 retries: ${package_filename}.${file_verify}"
-            notify_message "True" "$(format_error_notice \
+            notify_upload_failure "$(format_error_notice \
                 "${module_name}/${notify_type}" \
                 "P2" \
                 "处理中" \
