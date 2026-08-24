@@ -16,6 +16,8 @@ fi
 init_log_file "upgrade.log"
 
 lock_file="${UPGRADE_LOCK_FILE:-/tmp/operator-upgrade.lock}"
+lock_notice_file="${UPGRADE_LOCK_NOTICE_FILE:-${lock_file}.notice}"
+lock_notice_interval="${UPGRADE_LOCK_NOTICE_INTERVAL_SECONDS:-300}"
 config_file="${script_dir}/modules.conf"
 env_file="${script_dir}/.env"
 package_root="/opt/package"
@@ -29,12 +31,29 @@ overall_status=0
 notify_type="版本升级"
 
 acquire_upgrade_lock() {
-    exec 200>"$lock_file"
+    touch "$lock_file"
+    exec 200<>"$lock_file"
     if ! flock -n 200; then
-        log "ERROR! another upgrade task is running, lock file: ${lock_file}"
-        exit 1
+        local now last_notice holder
+
+        now=$(date +%s)
+        last_notice=0
+        holder=$(tr '\n' ' ' < "$lock_file" | sed 's/[[:space:]]*$//' || true)
+        if [[ -f "$lock_notice_file" ]]; then
+            last_notice=$(stat -c "%Y" "$lock_notice_file" 2>/dev/null || echo 0)
+        fi
+
+        if [[ "$lock_notice_interval" =~ ^[0-9]+$ ]] && (( now - last_notice >= lock_notice_interval )); then
+            log "WARN! upgrade task is already running, skip this cycle, lock file: ${lock_file}, holder: ${holder:-unknown}"
+            touch "$lock_notice_file"
+        fi
+
+        exit 0
     fi
 
+    : > "$lock_file"
+    printf 'pid=%s user=%s started=%s cwd=%s\n' "$$" "$(id -un 2>/dev/null || echo unknown)" "$(date '+%Y-%m-%d %H:%M:%S')" "$(pwd)" >&200
+    rm -f "$lock_notice_file"
     log "acquired lock: ${lock_file}"
 }
 
@@ -580,12 +599,12 @@ for module_name in "${MODULES[@]}"; do
     upgrade_script_status=0
     if [[ "$module_name" == "node" ]]; then
         set +e
-        bash "$upgrade_script" "$current_version" "$target_version" 2>&1 | tee -a "$LOGFILE"
+        bash "$upgrade_script" "$current_version" "$target_version" 200>&- 2>&1 | tee -a "$LOGFILE"
         upgrade_script_status=${PIPESTATUS[0]}
         set -e
     else
         set +e
-        bash "$upgrade_script" "$current_version" "$target_version" >> "$LOGFILE" 2>&1
+        bash "$upgrade_script" "$current_version" "$target_version" 200>&- >> "$LOGFILE" 2>&1
         upgrade_script_status=$?
         set -e
     fi
