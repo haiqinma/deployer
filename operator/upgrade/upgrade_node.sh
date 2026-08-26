@@ -80,6 +80,25 @@ fs.writeFileSync(starterFile, source.replace(from, to))
 NODE
 }
 
+copy_run_dir() {
+    local src_dir=$1
+    local dst_dir=$2
+    local entries=()
+
+    [[ -d "$src_dir" ]] || return 1
+    mkdir -p "$dst_dir"
+
+    shopt -s dotglob nullglob
+    entries=("$src_dir"/*)
+    shopt -u dotglob
+
+    if [[ ${#entries[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    cp -a "${entries[@]}" "$dst_dir/"
+}
+
 if [[ $# -ne 2 ]]; then
     usage
     exit 1
@@ -158,7 +177,10 @@ fi
 cp -f "${current_dir}/config.js" "${target_dir}/config.js"
 log "copied config: ${current_dir}/config.js -> ${target_dir}/config.js"
 
-cp -Rf "${current_dir}/run/." "${target_dir}/run/"
+copy_run_dir "${current_dir}/run" "${target_dir}/run" || {
+    log "ERROR! failed to copy run directory: ${current_dir}/run -> ${target_dir}/run"
+    exit 1
+}
 log "copied run: ${current_dir}/run -> ${target_dir}/run"
 
 target_secrets_paths=$(resolve_secrets_paths "${target_dir}/config.js" "$target_dir") || {
@@ -167,6 +189,11 @@ target_secrets_paths=$(resolve_secrets_paths "${target_dir}/config.js" "$target_
 }
 target_secrets_file=$(printf '%s\n' "$target_secrets_paths" | sed -n '1p')
 target_secrets_password_file=$(printf '%s\n' "$target_secrets_paths" | sed -n '2p')
+
+if [[ -f "$current_secrets_password_file" && ! -f "$target_secrets_password_file" ]]; then
+    log "ERROR! failed to copy secrets.passwordFile: ${current_secrets_password_file} -> ${target_secrets_password_file}"
+    exit 1
+fi
 
 if [[ -f "$target_secrets_file" && -f "$target_secrets_password_file" ]]; then
     patch_starter_password_file_reuse "${target_dir}/scripts/starter.sh" || {
