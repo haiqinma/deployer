@@ -162,12 +162,6 @@ current_secrets_paths=$(resolve_secrets_paths "${current_dir}/config.js" "$curre
 current_secrets_file=$(printf '%s\n' "$current_secrets_paths" | sed -n '1p')
 current_secrets_password_file=$(printf '%s\n' "$current_secrets_paths" | sed -n '2p')
 
-if [[ -f "$current_secrets_file" && ! -t 0 && ! -f "$current_secrets_password_file" ]]; then
-    log "ERROR! failed to start target node service: non-interactive start requires secrets.passwordFile before stopping current node"
-    log "ERROR! missing secrets.passwordFile: ${current_secrets_password_file}"
-    exit 1
-fi
-
 log "stop current node: cd ${current_dir} && scripts/starter.sh stop"
 if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); then
     log "ERROR! failed to stop current node service"
@@ -190,9 +184,15 @@ target_secrets_paths=$(resolve_secrets_paths "${target_dir}/config.js" "$target_
 target_secrets_file=$(printf '%s\n' "$target_secrets_paths" | sed -n '1p')
 target_secrets_password_file=$(printf '%s\n' "$target_secrets_paths" | sed -n '2p')
 
-if [[ -f "$current_secrets_password_file" && ! -f "$target_secrets_password_file" ]]; then
-    log "ERROR! failed to copy secrets.passwordFile: ${current_secrets_password_file} -> ${target_secrets_password_file}"
-    exit 1
+if [[ -f "$current_secrets_password_file" ]]; then
+    mkdir -p "$(dirname "$target_secrets_password_file")"
+    cp -pf "$current_secrets_password_file" "$target_secrets_password_file" || {
+        log "ERROR! failed to copy secrets.passwordFile: ${current_secrets_password_file} -> ${target_secrets_password_file}"
+        exit 1
+    }
+    log "copied secrets.passwordFile: ${current_secrets_password_file} -> ${target_secrets_password_file}"
+else
+    log "WARN! skip missing secrets.passwordFile, target starter may prompt for password: ${current_secrets_password_file}"
 fi
 
 if [[ -f "$target_secrets_file" && -f "$target_secrets_password_file" ]]; then
