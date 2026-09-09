@@ -102,7 +102,7 @@ fi
 
 [[ -f "${current_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${current_dir}/scripts/starter.sh"; exit 1; }
 [[ -f "${target_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${target_dir}/scripts/starter.sh"; exit 1; }
-[[ -f "${current_dir}/config.yaml" ]] || { log "ERROR! missing config: ${current_dir}/config.yaml"; exit 1; }
+[[ -f "${current_dir}/scripts/copy-for-upgrade.sh" ]] || { log "ERROR! missing script: ${current_dir}/scripts/copy-for-upgrade.sh"; exit 1; }
 
 log "stop current router: cd ${current_dir} && scripts/starter.sh stop"
 if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); then
@@ -110,8 +110,11 @@ if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); the
     exit 1
 fi
 
-cp -f "${current_dir}/config.yaml" "${target_dir}/config.yaml"
-log "copied config: ${current_dir}/config.yaml -> ${target_dir}/config.yaml"
+log "copy files for upgrade operation: cd ${current_dir} && scripts/copy-for-upgrade.sh ${target_dir}"
+if ! (cd "$current_dir" && bash scripts/copy-for-upgrade.sh ${target_dir} >> "$LOGFILE" 2>&1); then
+    log "ERROR! failed to copy files for upgrade operation"
+    exit 1
+fi
 
 log "start target router: cd ${target_dir} && scripts/starter.sh"
 if ! (cd "$target_dir" && bash scripts/starter.sh >> "$LOGFILE" 2>&1); then

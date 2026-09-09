@@ -100,7 +100,7 @@ if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); the
 fi
 
 log "copy files for upgrade operation: cd ${current_dir} && scripts/copy-for-upgrade.sh ${target_dir}"
-if ! (cd "$current_dir" && bash scripts/copy-for-upgrade.sh ${target_dir}>> "$LOGFILE" 2>&1); then
+if ! (cd "$current_dir" && bash scripts/copy-for-upgrade.sh ${target_dir} >> "$LOGFILE" 2>&1); then
     log "ERROR! failed to copy files for upgrade operation"
     exit 1
 fi
