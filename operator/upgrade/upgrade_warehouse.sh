@@ -79,8 +79,8 @@ else
 fi
 
 WEBDAV_FLAG=$(trim "${WEBDAV_FLAG:-all}")
-WAIT_SECONDS=$(trim "${WAIT_SECONDS:-0}")
-RETRY_TIMES=$(trim "${RETRY_TIMES:-0}")
+WAIT_SECONDS=$(trim "${WAIT_SECONDS:-20}")
+RETRY_TIMES=$(trim "${RETRY_TIMES:-3}")
 
 if ! [[ "$WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
     log "ERROR! invalid WAIT_SECONDS: ${WAIT_SECONDS}, expected a non-negative integer"
