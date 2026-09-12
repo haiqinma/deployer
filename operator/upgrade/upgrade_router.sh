@@ -77,6 +77,8 @@ fi
 
 WAIT_SECONDS=$(trim "${WAIT_SECONDS:-0}")
 RETRY_TIMES=$(trim "${RETRY_TIMES:-0}")
+HEALTH_WAIT_SECONDS=$(trim "${HEALTH_WAIT_SECONDS:-30}")
+HEALTH_INTERVAL=$(trim "${HEALTH_INTERVAL:-2}")
 
 if ! [[ "$WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
     log "ERROR! invalid WAIT_SECONDS: ${WAIT_SECONDS}, expected a non-negative integer"
@@ -85,6 +87,16 @@ fi
 
 if ! [[ "$RETRY_TIMES" =~ ^[0-9]+$ ]]; then
     log "ERROR! invalid RETRY_TIMES: ${RETRY_TIMES}, expected a non-negative integer"
+    exit 1
+fi
+
+if ! [[ "$HEALTH_WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
+    log "ERROR! invalid HEALTH_WAIT_SECONDS: ${HEALTH_WAIT_SECONDS}, expected a non-negative integer"
+    exit 1
+fi
+
+if ! [[ "$HEALTH_INTERVAL" =~ ^[1-9][0-9]*$ ]]; then
+    log "ERROR! invalid HEALTH_INTERVAL: ${HEALTH_INTERVAL}, expected a positive integer"
     exit 1
 fi
 
@@ -117,8 +129,8 @@ if [[ -f "${target_dir}/scripts/health-check.sh" ]]; then
             sleep "$WAIT_SECONDS"
         fi
 
-        log "health check target router attempt ${attempt}/${max_health_check_attempts}: cd ${target_dir} && scripts/health-check.sh --level all"
-        if (cd "$target_dir" && bash scripts/health-check.sh --level all >> "$LOGFILE" 2>&1); then
+        log "health check target router attempt ${attempt}/${max_health_check_attempts}: cd ${target_dir} && scripts/health-check.sh --level all --wait ${HEALTH_WAIT_SECONDS} --interval ${HEALTH_INTERVAL}"
+        if (cd "$target_dir" && bash scripts/health-check.sh --level all --wait "$HEALTH_WAIT_SECONDS" --interval "$HEALTH_INTERVAL" >> "$LOGFILE" 2>&1); then
             health_check_status=0
             break
         else
