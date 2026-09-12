@@ -75,10 +75,8 @@ if [[ -f "$env_file" ]]; then
     set +a
 fi
 
-WAIT_SECONDS=$(trim "${WAIT_SECONDS:-0}")
-RETRY_TIMES=$(trim "${RETRY_TIMES:-0}")
-HEALTH_WAIT_SECONDS=$(trim "${HEALTH_WAIT_SECONDS:-30}")
-HEALTH_INTERVAL=$(trim "${HEALTH_INTERVAL:-2}")
+WAIT_SECONDS=$(trim "${WAIT_SECONDS:-20}")
+RETRY_TIMES=$(trim "${RETRY_TIMES:-3}")
 
 if ! [[ "$WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
     log "ERROR! invalid WAIT_SECONDS: ${WAIT_SECONDS}, expected a non-negative integer"
@@ -90,19 +88,9 @@ if ! [[ "$RETRY_TIMES" =~ ^[0-9]+$ ]]; then
     exit 1
 fi
 
-if ! [[ "$HEALTH_WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
-    log "ERROR! invalid HEALTH_WAIT_SECONDS: ${HEALTH_WAIT_SECONDS}, expected a non-negative integer"
-    exit 1
-fi
-
-if ! [[ "$HEALTH_INTERVAL" =~ ^[1-9][0-9]*$ ]]; then
-    log "ERROR! invalid HEALTH_INTERVAL: ${HEALTH_INTERVAL}, expected a positive integer"
-    exit 1
-fi
-
 [[ -f "${current_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${current_dir}/scripts/starter.sh"; exit 1; }
 [[ -f "${target_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${target_dir}/scripts/starter.sh"; exit 1; }
-[[ -f "${current_dir}/config.yaml" ]] || { log "ERROR! missing config: ${current_dir}/config.yaml"; exit 1; }
+[[ -f "${current_dir}/scripts/copy-for-upgrade.sh" ]] || { log "ERROR! missing script: ${current_dir}/scripts/copy-for-upgrade.sh"; exit 1; }
 
 log "stop current router: cd ${current_dir} && scripts/starter.sh stop"
 if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); then
@@ -110,8 +98,11 @@ if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); the
     exit 1
 fi
 
-cp -f "${current_dir}/config.yaml" "${target_dir}/config.yaml"
-log "copied config: ${current_dir}/config.yaml -> ${target_dir}/config.yaml"
+log "copy files for upgrade operation: cd ${current_dir} && scripts/copy-for-upgrade.sh ${target_dir}"
+if ! (cd "$current_dir" && bash scripts/copy-for-upgrade.sh ${target_dir} >> "$LOGFILE" 2>&1); then
+    log "ERROR! failed to copy files for upgrade operation"
+    exit 1
+fi
 
 log "start target router: cd ${target_dir} && scripts/starter.sh"
 if ! (cd "$target_dir" && bash scripts/starter.sh >> "$LOGFILE" 2>&1); then
@@ -129,8 +120,8 @@ if [[ -f "${target_dir}/scripts/health-check.sh" ]]; then
             sleep "$WAIT_SECONDS"
         fi
 
-        log "health check target router attempt ${attempt}/${max_health_check_attempts}: cd ${target_dir} && scripts/health-check.sh --level all --wait ${HEALTH_WAIT_SECONDS} --interval ${HEALTH_INTERVAL}"
-        if (cd "$target_dir" && bash scripts/health-check.sh --level all --wait "$HEALTH_WAIT_SECONDS" --interval "$HEALTH_INTERVAL" >> "$LOGFILE" 2>&1); then
+        log "health check target router attempt ${attempt}/${max_health_check_attempts}: cd ${target_dir} && scripts/health-check.sh --level all"
+        if (cd "$target_dir" && bash scripts/health-check.sh --level all >> "$LOGFILE" 2>&1); then
             health_check_status=0
             break
         else

@@ -79,8 +79,8 @@ else
 fi
 
 WEBDAV_FLAG=$(trim "${WEBDAV_FLAG:-all}")
-WAIT_SECONDS=$(trim "${WAIT_SECONDS:-0}")
-RETRY_TIMES=$(trim "${RETRY_TIMES:-0}")
+WAIT_SECONDS=$(trim "${WAIT_SECONDS:-20}")
+RETRY_TIMES=$(trim "${RETRY_TIMES:-3}")
 
 if ! [[ "$WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
     log "ERROR! invalid WAIT_SECONDS: ${WAIT_SECONDS}, expected a non-negative integer"
@@ -104,7 +104,7 @@ esac
 if [[ "$WEBDAV_FLAG" == "all" || "$WEBDAV_FLAG" == "backend" ]]; then
     [[ -f "${current_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${current_dir}/scripts/starter.sh"; exit 1; }
     [[ -f "${target_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${target_dir}/scripts/starter.sh"; exit 1; }
-    [[ -f "${current_dir}/config.yaml" ]] || { log "ERROR! missing config: ${current_dir}/config.yaml"; exit 1; }
+    [[ -f "${current_dir}/scripts/copy-for-upgrade.sh" ]] || { log "ERROR! missing script: ${current_dir}/scripts/copy-for-upgrade.sh"; exit 1; }
 
     log "stop current warehouse: cd ${current_dir} && scripts/starter.sh stop"
     if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); then
@@ -112,8 +112,11 @@ if [[ "$WEBDAV_FLAG" == "all" || "$WEBDAV_FLAG" == "backend" ]]; then
         exit 1
     fi
 
-    cp -f "${current_dir}/config.yaml" "${target_dir}/config.yaml"
-    log "copied config: ${current_dir}/config.yaml -> ${target_dir}/config.yaml"
+    log "copy files for upgrade operation: cd ${current_dir} && scripts/copy-for-upgrade.sh ${target_dir}"
+    if ! (cd "$current_dir" && bash scripts/copy-for-upgrade.sh ${target_dir} >> "$LOGFILE" 2>&1); then
+        log "ERROR! failed to copy files for upgrade operation"
+        exit 1
+    fi
 
     log "start target warehouse: cd ${target_dir} && scripts/starter.sh"
     if ! (cd "$target_dir" && bash scripts/starter.sh >> "$LOGFILE" 2>&1); then

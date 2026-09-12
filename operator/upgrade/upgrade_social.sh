@@ -75,8 +75,8 @@ if [[ -f "$env_file" ]]; then
     set +a
 fi
 
-WAIT_SECONDS=$(trim "${WAIT_SECONDS:-0}")
-RETRY_TIMES=$(trim "${RETRY_TIMES:-0}")
+WAIT_SECONDS=$(trim "${WAIT_SECONDS:-20}")
+RETRY_TIMES=$(trim "${RETRY_TIMES:-3}")
 
 if ! [[ "$WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
     log "ERROR! invalid WAIT_SECONDS: ${WAIT_SECONDS}, expected a non-negative integer"
@@ -100,7 +100,7 @@ if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); the
 fi
 
 log "copy files for upgrade operation: cd ${current_dir} && scripts/copy-for-upgrade.sh ${target_dir}"
-if ! (cd "$current_dir" && bash scripts/copy-for-upgrade.sh ${target_dir}>> "$LOGFILE" 2>&1); then
+if ! (cd "$current_dir" && bash scripts/copy-for-upgrade.sh ${target_dir} >> "$LOGFILE" 2>&1); then
     log "ERROR! failed to copy files for upgrade operation"
     exit 1
 fi

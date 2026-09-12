@@ -59,30 +59,6 @@ acquire_upgrade_lock() {
 
 acquire_upgrade_lock
 
-if ! declare -F copy_backup_config_files >/dev/null 2>&1; then
-    copy_backup_config_files() {
-        local current_dir=$1
-        local target_dir=$2
-        local rel_path src dst
-
-        mkdir -p "${target_dir}/scripts"
-
-        for rel_path in "scripts/backup.conf" "scripts/.passphrase-file"; do
-            src="${current_dir}/${rel_path}"
-            dst="${target_dir}/${rel_path}"
-
-            if [[ -f "$src" ]]; then
-                cp -pf "$src" "$dst"
-                log "copied backup config file: ${src} -> ${dst}"
-            else
-                log "WARN! skip missing backup config file: ${src}"
-            fi
-        done
-
-        return 0
-    }
-fi
-
 if [[ -f "$env_file" ]]; then
     # shellcheck disable=SC1090
     set -a
@@ -639,10 +615,6 @@ for module_name in "${MODULES[@]}"; do
 
     log "upgrade finished for ${module_name}: ${current_version} -> ${target_version}"
     log "active symlink updated: ${deploy_root}/${module_name} -> $(basename "$EXTRACTED_DIR")"
-
-    if ! copy_backup_config_files "$current_dir" "$EXTRACTED_DIR"; then
-        log "WARN! failed to copy optional backup config files for ${module_name}, continue config backup"
-    fi
 
     notify_info "$(format_upgrade_complete_notice \
         "${module_name}/服务升级" \

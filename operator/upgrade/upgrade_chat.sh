@@ -75,8 +75,8 @@ if [[ -f "$env_file" ]]; then
     set +a
 fi
 
-WAIT_SECONDS=$(trim "${WAIT_SECONDS:-0}")
-RETRY_TIMES=$(trim "${RETRY_TIMES:-0}")
+WAIT_SECONDS=$(trim "${WAIT_SECONDS:-20}")
+RETRY_TIMES=$(trim "${RETRY_TIMES:-3}")
 
 if ! [[ "$WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
     log "ERROR! invalid WAIT_SECONDS: ${WAIT_SECONDS}, expected a non-negative integer"
@@ -90,7 +90,7 @@ fi
 
 [[ -f "${current_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${current_dir}/scripts/starter.sh"; exit 1; }
 [[ -f "${target_dir}/scripts/starter.sh" ]] || { log "ERROR! missing script: ${target_dir}/scripts/starter.sh"; exit 1; }
-[[ -f "${current_dir}/.env" ]] || { log "ERROR! missing env file: ${current_dir}/.env"; exit 1; }
+[[ -f "${current_dir}/scripts/copy-for-upgrade.sh" ]] || { log "ERROR! missing script: ${current_dir}/scripts/copy-for-upgrade.sh"; exit 1; }
 
 log "stop current chat: cd ${current_dir} && scripts/starter.sh stop"
 if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); then
@@ -98,8 +98,11 @@ if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); the
     exit 1
 fi
 
-cp -f "${current_dir}/.env" "${target_dir}/.env"
-log "copied env file: ${current_dir}/.env -> ${target_dir}/.env"
+log "copy files for upgrade operation: cd ${current_dir} && scripts/copy-for-upgrade.sh ${target_dir}"
+if ! (cd "$current_dir" && bash scripts/copy-for-upgrade.sh ${target_dir} >> "$LOGFILE" 2>&1); then
+    log "ERROR! failed to copy files for upgrade operation"
+    exit 1
+fi
 
 log "start target chat: cd ${target_dir} && scripts/starter.sh"
 if ! (cd "$target_dir" && bash scripts/starter.sh >> "$LOGFILE" 2>&1); then
