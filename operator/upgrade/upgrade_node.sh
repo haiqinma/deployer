@@ -128,8 +128,8 @@ if [[ -f "$env_file" ]]; then
     set +a
 fi
 
-WAIT_SECONDS=$(trim "${WAIT_SECONDS:-20}")
-RETRY_TIMES=$(trim "${RETRY_TIMES:-3}")
+WAIT_SECONDS=$(trim "${WAIT_SECONDS:-2}")
+RETRY_TIMES=$(trim "${RETRY_TIMES:-5}")
 
 if ! [[ "$WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
     log "ERROR! invalid WAIT_SECONDS: ${WAIT_SECONDS}, expected a non-negative integer"
@@ -221,7 +221,7 @@ if [[ -f "${target_dir}/scripts/health-check.sh" ]]; then
     max_health_check_attempts=$((RETRY_TIMES + 1))
 
     for ((attempt = 1; attempt <= max_health_check_attempts; attempt++)); do
-        if (( WAIT_SECONDS > 0 )); then
+        if (( attempt > 1 && WAIT_SECONDS > 0 )); then
             log "wait ${WAIT_SECONDS}s before node health check attempt ${attempt}/${max_health_check_attempts}"
             sleep "$WAIT_SECONDS"
         fi
