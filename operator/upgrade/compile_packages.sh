@@ -661,8 +661,15 @@ for module_name in "${MODULES[@]}"; do
     capture_output_package_state "$module_name" "$module_dir" "$build_state_before"
 
     log "build package for ${module_name}: ${build_reason}"
-    if ! (cd "$module_dir" && bash scripts/package.sh 200>&- >> "$LOGFILE" 2>&1); then
-        log "ERROR! package script failed for ${module_name}"
+    package_log="$(mktemp)"
+    if ! (cd "$module_dir" && bash scripts/package.sh 200>&- > "$package_log" 2>&1); then
+        log "ERROR! package script failed for ${module_name}; output:"
+        sed -n '1,160p' "$package_log" | tee -a "$LOGFILE"
+        if [[ "$(wc -l < "$package_log")" -gt 160 ]]; then
+            log "ERROR! package script output truncated; full output: ${package_log}"
+        else
+            rm -f "$package_log"
+        fi
         rm -f "$build_state_before"
         notify_build_failure \
             "$module_name" \
@@ -672,6 +679,8 @@ for module_name in "${MODULES[@]}"; do
         overall_status=1
         continue
     fi
+    cat "$package_log" >> "$LOGFILE"
+    rm -f "$package_log"
 
     output_packages=(
         "${module_dir}/output/${module_name}-"*.tar.gz
