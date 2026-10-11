@@ -393,8 +393,6 @@ def run_codex(
         "--json",
         "--sandbox",
         str(config.get("sandbox", "read-only")),
-        "--ask-for-approval",
-        str(config.get("ask_for_approval", "never")),
         "--output-schema",
         str(schema_file),
         "--output-last-message",

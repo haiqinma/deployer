@@ -12,7 +12,7 @@
 - confidence：0 到 1 的数字
 - evidence：引用输入中具体事实的数组
 - impact：影响范围数组
-- recommended_actions：只给人工执行的排查或修复建议，不执行操作
+- recommended_actions：必须给出可执行的解决方案和人工排查/修复步骤，不执行操作
 - missing_information：无法确认根因时需要补充的信息数组
 - dedup_fingerprint、occurrences、first_seen、last_seen：原样回传输入字段
 

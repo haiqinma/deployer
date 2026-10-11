@@ -13,3 +13,5 @@ nohup.out
 *.bak
 *.pem
 .codex
+.project-lifecycle.json
+.project-task.json
