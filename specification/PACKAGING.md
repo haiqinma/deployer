@@ -65,6 +65,8 @@ git pull --rebase origin main
 - 前端静态资源
 - 启动脚本 `scripts/starter.sh`
 - 健康检查脚本 `scripts/health-check.sh`
+- 标准升级入口 `scripts/upgrade.sh`
+- 配置迁移脚本 `scripts/copy-for-upgrade.sh`
 - 升级后验证所需的 `scripts/test.sh` 和 smoke 测试资源
 - 启动所需的其他必要资源文件
 
