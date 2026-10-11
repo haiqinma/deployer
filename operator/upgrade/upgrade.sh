@@ -391,6 +391,19 @@ mkdir -p "$package_root" "$deploy_root"
 log "webdav remote dir: ${WEBDAV_DIR_URL}/"
 log "webdav access key: ${WEBDAV_PACKAGE_AK:-<empty>}"
 
+WAIT_SECONDS=$(trim "${WAIT_SECONDS:-20}")
+RETRY_TIMES=$(trim "${RETRY_TIMES:-3}")
+
+if ! [[ "$WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
+    log "ERROR! invalid WAIT_SECONDS: ${WAIT_SECONDS}, expected a non-negative integer"
+    exit 1
+fi
+
+if ! [[ "$RETRY_TIMES" =~ ^[0-9]+$ ]]; then
+    log "ERROR! invalid RETRY_TIMES: ${RETRY_TIMES}, expected a non-negative integer"
+    exit 1
+fi
+
 mapfile -t remote_files < <(webdav_list_files) || exit 1
 log "remote files count: ${#remote_files[@]}"
 log "\nbegin upgrade [$(date)]"
@@ -557,44 +570,144 @@ for module_name in "${MODULES[@]}"; do
     fi
     log "package extracted to ${EXTRACTED_DIR}"
 
-    upgrade_script="${script_dir}/upgrade_${module_name}.sh"
+    upgrade_script="${EXTRACTED_DIR}/scripts/upgrade.sh"
     if [[ ! -f "$upgrade_script" ]]; then
         log "ERROR! upgrade script is missing: ${upgrade_script}"
         notify_alert "$(format_error_notice \
             "${module_name}/${notify_type}" \
             "P2" \
             "处理中" \
-            "缺少模块升级脚本：${upgrade_script}" \
+            "缺少项目升级脚本：${upgrade_script}" \
             "无法执行 ${module_name} 的版本切换" \
-            "升级脚本未部署或路径配置错误" \
-            "补齐升级脚本后重新执行升级")"
+            "安装包未提供标准 scripts/upgrade.sh" \
+            "在项目中补齐 scripts/upgrade.sh 并重新打包")"
         overall_status=1
         continue
     fi
 
-    upgrade_script_status=0
-    if [[ "$module_name" == "node" ]]; then
-        set +e
-        bash "$upgrade_script" "$current_version" "$target_version" 200>&- 2>&1 | tee -a "$LOGFILE"
-        upgrade_script_status=${PIPESTATUS[0]}
-        set -e
+    run_project_upgrade_hook() {
+        local phase=$1
+
+        bash "$upgrade_script" "$phase" "$current_dir" "$EXTRACTED_DIR" 200>&- >> "$LOGFILE" 2>&1
+    }
+
+    service_upgrade_enabled=1
+    if run_project_upgrade_hook prepare; then
+        :
     else
-        set +e
-        bash "$upgrade_script" "$current_version" "$target_version" 200>&- >> "$LOGFILE" 2>&1
         upgrade_script_status=$?
-        set -e
+        if [[ "$upgrade_script_status" -eq 10 ]]; then
+            service_upgrade_enabled=0
+            log "project upgrade script selected custom-only mode for ${module_name}"
+        else
+            log "ERROR! project upgrade prepare hook failed for ${module_name}"
+            notify_alert "$(format_error_notice \
+                "${module_name}/${notify_type}" \
+                "P1" \
+                "处理中" \
+                "项目升级脚本 prepare 阶段执行失败" \
+                "${module_name} 未完成从 v${current_version} 到 v${target_version} 的升级" \
+                "升级前定制步骤失败" \
+                "检查项目 scripts/upgrade.sh 日志并重新执行升级")"
+            overall_status=1
+            continue
+        fi
     fi
 
-    if [[ $upgrade_script_status -ne 0 ]]; then
-        log "ERROR! upgrade script failed for ${module_name}"
+    if [[ "$service_upgrade_enabled" -eq 1 ]]; then
+        [[ -f "${current_dir}/scripts/starter.sh" ]] || {
+            log "ERROR! missing script: ${current_dir}/scripts/starter.sh"
+            overall_status=1
+            continue
+        }
+        [[ -f "${EXTRACTED_DIR}/scripts/starter.sh" ]] || {
+            log "ERROR! missing script: ${EXTRACTED_DIR}/scripts/starter.sh"
+            overall_status=1
+            continue
+        }
+        [[ -f "${current_dir}/scripts/copy-for-upgrade.sh" ]] || {
+            log "ERROR! missing script: ${current_dir}/scripts/copy-for-upgrade.sh"
+            overall_status=1
+            continue
+        }
+
+        log "stop current ${module_name}: cd ${current_dir} && scripts/starter.sh stop"
+        if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); then
+            log "ERROR! failed to stop current ${module_name} service"
+            overall_status=1
+            continue
+        fi
+
+        log "copy files for upgrade operation: cd ${current_dir} && scripts/copy-for-upgrade.sh ${EXTRACTED_DIR}"
+        if ! (cd "$current_dir" && bash scripts/copy-for-upgrade.sh "$EXTRACTED_DIR" >> "$LOGFILE" 2>&1); then
+            log "ERROR! failed to copy files for upgrade operation"
+            overall_status=1
+            continue
+        fi
+    fi
+
+    if run_project_upgrade_hook post-copy; then
+        :
+    else
+        upgrade_script_status=$?
+        log "ERROR! project upgrade post-copy hook failed for ${module_name}"
         notify_alert "$(format_error_notice \
             "${module_name}/${notify_type}" \
             "P1" \
             "处理中" \
-            "模块升级脚本执行失败" \
+            "项目升级脚本 post-copy 阶段执行失败" \
             "${module_name} 未完成从 v${current_version} 到 v${target_version} 的升级" \
-            "升级步骤在模块脚本内部失败" \
-            "检查模块升级脚本日志并修复后重新执行升级")"
+            "升级后定制步骤失败，退出码 ${upgrade_script_status}" \
+            "检查项目 scripts/upgrade.sh 日志并重新执行升级")"
+        overall_status=1
+        continue
+    fi
+
+    if [[ "$service_upgrade_enabled" -eq 1 ]]; then
+        log "start target ${module_name}: cd ${EXTRACTED_DIR} && scripts/starter.sh"
+        if ! (cd "$EXTRACTED_DIR" && bash scripts/starter.sh >> "$LOGFILE" 2>&1); then
+            log "ERROR! failed to start target ${module_name} service"
+            overall_status=1
+            continue
+        fi
+
+        if [[ -f "${EXTRACTED_DIR}/scripts/health-check.sh" ]]; then
+            health_check_status=0
+            max_health_check_attempts=$((RETRY_TIMES + 1))
+
+            for ((attempt = 1; attempt <= max_health_check_attempts; attempt++)); do
+                if (( WAIT_SECONDS > 0 )); then
+                    log "wait ${WAIT_SECONDS}s before ${module_name} health check attempt ${attempt}/${max_health_check_attempts}"
+                    sleep "$WAIT_SECONDS"
+                fi
+
+                log "health check target ${module_name} attempt ${attempt}/${max_health_check_attempts}: cd ${EXTRACTED_DIR} && scripts/health-check.sh --level all"
+                if (cd "$EXTRACTED_DIR" && bash scripts/health-check.sh --level all >> "$LOGFILE" 2>&1); then
+                    health_check_status=0
+                    break
+                else
+                    health_check_status=$?
+                fi
+
+                log "${module_name} health check failed on attempt ${attempt}/${max_health_check_attempts} with exit code ${health_check_status}"
+            done
+
+            if [[ $health_check_status -ne 0 ]]; then
+                log "ERROR! ${module_name} health check failed after ${max_health_check_attempts} attempt(s)"
+                overall_status=1
+                continue
+            fi
+
+            log "${module_name} health check passed"
+        else
+            log "WARN! skip ${module_name} health check, script is missing: ${EXTRACTED_DIR}/scripts/health-check.sh"
+        fi
+    fi
+
+    if run_project_upgrade_hook finalize; then
+        :
+    else
+        log "ERROR! project upgrade finalize hook failed for ${module_name}"
         overall_status=1
         continue
     fi
