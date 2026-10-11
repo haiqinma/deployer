@@ -625,12 +625,6 @@ for module_name in "${MODULES[@]}"; do
             overall_status=1
             continue
         }
-        [[ -f "${current_dir}/scripts/copy-for-upgrade.sh" ]] || {
-            log "ERROR! missing script: ${current_dir}/scripts/copy-for-upgrade.sh"
-            overall_status=1
-            continue
-        }
-
         log "stop current ${module_name}: cd ${current_dir} && scripts/starter.sh stop"
         if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); then
             log "ERROR! failed to stop current ${module_name} service"
@@ -638,9 +632,19 @@ for module_name in "${MODULES[@]}"; do
             continue
         fi
 
-        log "copy files for upgrade operation: cd ${current_dir} && scripts/copy-for-upgrade.sh ${EXTRACTED_DIR}"
-        if ! (cd "$current_dir" && bash scripts/copy-for-upgrade.sh "$EXTRACTED_DIR" >> "$LOGFILE" 2>&1); then
-            log "ERROR! failed to copy files for upgrade operation"
+        if run_project_upgrade_hook copy-config; then
+            :
+        else
+            upgrade_script_status=$?
+            log "ERROR! project upgrade copy-config hook failed for ${module_name}"
+            notify_alert "$(format_error_notice \
+                "${module_name}/${notify_type}" \
+                "P1" \
+                "处理中" \
+                "项目升级脚本 copy-config 阶段执行失败" \
+                "${module_name} 未完成从 v${current_version} 到 v${target_version} 的升级" \
+                "配置迁移失败，退出码 ${upgrade_script_status}" \
+                "检查项目 scripts/upgrade.sh 日志并重新执行升级")"
             overall_status=1
             continue
         fi

@@ -12,9 +12,8 @@
 - 测试环境由定时任务调用`deployer/operator/upgrade/upgrade.sh` 依据`operator/upgrade/modules.conf`的配置来完成对应模块的升级。
 - 生产环境的升级需要手动执行`deployer/operator/upgrade/upgrade.sh` 依据`operator/upgrade/modules.conf`的配置来完成对应模块的升级。
 
-当前已接入统一升级流程的模块为 `chat`、`node`、`project`、`router`、`social` 和 `warehouse`。
-其他项目必须先满足本规范的安装包契约，再加入 `modules.conf`。例如 `billing` 当前
-缺少 `scripts/upgrade.sh`、`scripts/copy-for-upgrade.sh` 和健康检查脚本，不属于本流程。
+当前已接入统一升级流程的模块为 `chat`、`node`、`project`、`router`、`social`、
+`warehouse` 和 `billing`。其他项目必须先满足本规范的安装包契约，再加入 `modules.conf`。
 
 模块名称必须与安装包前缀、部署目录前缀和升级脚本约定一致。例如模块 `chat` 对应：
 
@@ -32,7 +31,7 @@
 2. `operator/upgrade/.env` 已正确配置。
 3. `operator/upgrade/modules.conf` 已填写待升级模块。
 4. 本地部署目录 `/opt/deploy` 下存在当前版本目录，且目录名符合 `模块名-v主版本.次版本.修订版本-7位commit` 格式。
-5. 当前版本目录存在 `scripts/starter.sh` 和 `scripts/copy-for-upgrade.sh`，目标安装包存在 `scripts/starter.sh` 和 `scripts/upgrade.sh`。
+5. 当前版本目录和目标安装包存在 `scripts/starter.sh` 与 `scripts/upgrade.sh`，且目标升级脚本支持 `copy-config` 阶段。
 6. 如果目标安装包提供 `scripts/health-check.sh`，该脚本可在目标目录中执行；当前版本目录内存在项目升级脚本要求的配置文件。
 7. 目标安装包内的顶层目录名与安装包文件名去掉 `.tar.gz` 后一致。
 8. 操作用户具备读写 `/opt/package`、`/opt/deploy`、`/opt/logs` 以及启动/停止服务所需权限。
@@ -169,8 +168,8 @@ bash transfer_packages.sh download chat-v1.2.3-a1b2c3d.tar.gz
 8. 校验安装包完整性。
 9. 解压安装包到 `/opt/deploy/<module>-v<version>-<commit>`。
 10. 调用目标安装包的 `scripts/upgrade.sh prepare <current-dir> <target-dir>`；退出码 `10` 表示只执行项目定制动作，不执行通用服务切换。
-11. 执行通用的停止服务、复制配置和文件流程。
-12. 调用 `scripts/upgrade.sh post-copy <current-dir> <target-dir>` 执行项目定制迁移或静态资源发布。
+11. 停止服务后调用 `scripts/upgrade.sh copy-config <current-dir> <target-dir>` 迁移项目配置。
+12. 调用 `scripts/upgrade.sh post-copy <current-dir> <target-dir>` 执行静态资源发布或其他项目定制动作。
 13. 执行通用的启动和健康检查流程。
 14. 调用 `scripts/upgrade.sh finalize <current-dir> <target-dir>`，然后更新 `/opt/deploy/<module>` 软链接。
 15. 发送升级完成或异常通知。
@@ -192,10 +191,10 @@ bash transfer_packages.sh download chat-v1.2.3-a1b2c3d.tar.gz
 `operator/upgrade/upgrade.sh` 执行的通用行为：
 
 1. 查找当前版本目录和目标版本目录。
-2. 检查当前版本存在 `scripts/starter.sh` 和 `scripts/copy-for-upgrade.sh`，目标版本存在 `scripts/starter.sh`；目标版本的 `scripts/upgrade.sh` 在解压后单独检查。
+2. 检查当前版本和目标版本存在 `scripts/starter.sh`、`scripts/upgrade.sh`；目标版本的 `scripts/upgrade.sh` 在解压后单独检查。
 3. 调用项目脚本的 `prepare` 阶段。
 4. 在当前版本目录停止当前服务：`bash scripts/starter.sh stop`。
-5. 调用当前版本的 `scripts/copy-for-upgrade.sh` 将配置复制到目标版本。
+5. 调用目标版本的 `scripts/upgrade.sh copy-config <current-dir> <target-dir>` 将配置复制到目标版本。
 6. 调用项目脚本的 `post-copy` 阶段。
 7. 启动目标服务：`bash scripts/starter.sh`。
 8. 如果目标版本存在 `scripts/health-check.sh`，执行 `bash scripts/health-check.sh --level all` 并按配置重试。
@@ -247,7 +246,7 @@ bash scripts/health-check.sh --level all
 ```bash
 cd /opt/deploy/chat-v1.2.3-a1b2c3d
 bash scripts/starter.sh stop
-bash scripts/copy-for-upgrade.sh /opt/deploy/chat-v1.2.2-a1b2c3d
+bash scripts/upgrade.sh copy-config /opt/deploy/chat-v1.2.3-a1b2c3d /opt/deploy/chat-v1.2.2-a1b2c3d
 cd /opt/deploy/chat-v1.2.2-a1b2c3d
 bash scripts/starter.sh
 ln -sfn chat-v1.2.2-a1b2c3d /opt/deploy/chat
@@ -272,7 +271,7 @@ ln -sfn chat-v1.2.2-a1b2c3d /opt/deploy/chat
 | 版本解析失败 | 包名不符合规范 | 重命名或重新生成安装包 |
 | 当前版本目录不存在 | `/opt/deploy` 目录缺失或命名不规范 | 修正部署目录或软链接 |
 | 解压失败或顶层目录不匹配 | 安装包结构不符合约定 | 重新打包，确保顶层目录与包名一致 |
-| 项目升级脚本缺失 | 目标安装包没有 `scripts/upgrade.sh` | 在项目中补齐 `scripts/upgrade.sh` 并重新打包 |
+| 项目升级脚本缺失或阶段不完整 | 目标安装包没有 `scripts/upgrade.sh` 或不支持 `copy-config` | 在项目中补齐标准阶段并重新打包 |
 | 配置文件缺失 | 当前版本目录缺少 `.env`、`config.js` 或 `config.yaml` | 从备份或配置中心恢复后重试 |
 | 健康检查失败 | 目标服务启动异常或依赖不可用 | 查看模块日志和健康检查输出，修复后重试或回退 |
 | nginx 重启失败 | `warehouse` 前端发布权限或 nginx 配置异常 | 检查 systemd/nginx 日志，修复后重新发布前端 |
