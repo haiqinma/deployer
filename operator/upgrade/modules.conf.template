@@ -1,3 +1,10 @@
 # One module name per line. Lines starting with # are ignored.
-# Example:
-# webdav
+# 当前已接入统一升级流程的模块：
+# chat
+# node
+# project
+# router
+# social
+# warehouse
+#
+# billing 当前缺少标准升级安装包文件，暂不要加入此列表。

@@ -7,12 +7,16 @@
 - 升级脚本面向已按命名规范部署到 `/opt/deploy` 的服务模块。
 - 主入口 `operator/upgrade/upgrade.sh` 会读取同脚本目录下的`operator/upgrade/modules.conf`来获取模块清单，检查 WebDAV 制品仓库中的最新安装包，并在远程版本高于本地当前版本时执行升级。
 - 每个模块升级时会选取 WebDAV 制品仓库中对应版本号最大的文件 作为目标版本进行升级操作。
-- 通用升级生命周期由 `operator/upgrade/upgrade.sh` 完成；每个项目必须在安装包内提供 `scripts/upgrade.sh`，只实现项目特有的升级动作。
+- 通用升级生命周期由 `operator/upgrade/upgrade.sh` 完成；参与统一升级流程的模块必须在安装包内提供 `scripts/upgrade.sh`，只实现项目特有的升级动作。
 - 此操作并不适用于模块的首次部署操作，也就是说如果当前节点并没有对应的模块，需要先手动完成部署并验证项目的 `scripts/upgrade.sh`。
 - 测试环境由定时任务调用`deployer/operator/upgrade/upgrade.sh` 依据`operator/upgrade/modules.conf`的配置来完成对应模块的升级。
 - 生产环境的升级需要手动执行`deployer/operator/upgrade/upgrade.sh` 依据`operator/upgrade/modules.conf`的配置来完成对应模块的升级。
 
-模块名称必须与安装包前缀、部署目录前缀和升级脚本后缀一致。例如模块 `chat` 对应：
+当前已接入统一升级流程的模块为 `chat`、`node`、`project`、`router`、`social` 和 `warehouse`。
+其他项目必须先满足本规范的安装包契约，再加入 `modules.conf`。例如 `billing` 当前
+缺少 `scripts/upgrade.sh`、`scripts/copy-for-upgrade.sh` 和健康检查脚本，不属于本流程。
+
+模块名称必须与安装包前缀、部署目录前缀和升级脚本约定一致。例如模块 `chat` 对应：
 
 - 安装包：`chat-v<version>-<commit>.tar.gz`
 - 部署目录：`/opt/deploy/chat-v<version>-<commit>`

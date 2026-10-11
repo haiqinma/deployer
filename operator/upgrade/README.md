@@ -4,6 +4,12 @@
 `upgrade.sh` 编排；项目安装包中的 `scripts/upgrade.sh` 只负责项目特有动作。
 deployer 不再提供 `upgrade_<module>.sh` 这类项目级升级脚本。
 
+当前已接入统一升级流程的模块是 `chat`、`node`、`project`、`router`、`social`
+和 `warehouse`。`billing` 当前不是可升级模块：它的安装包还没有
+`scripts/upgrade.sh`、`scripts/copy-for-upgrade.sh` 和健康检查脚本，因此不要将
+`billing` 写入 `modules.conf`。接入前需要先按本 README 和
+[`specification/PACKAGING.md`](../../specification/PACKAGING.md) 补齐安装包契约并完成验证。
+
 ## 脚本入口
 
 | 脚本 | 运行位置 | 用途 | 配置 | 日志 |
@@ -84,7 +90,7 @@ less /opt/logs/upgrade.log
 
 ## 项目升级钩子
 
-每个安装包必须包含可执行的 `scripts/upgrade.sh`，接口固定为：
+纳入统一升级流程的每个安装包必须包含可执行的 `scripts/upgrade.sh`，接口固定为：
 
 ```bash
 bash scripts/upgrade.sh <prepare|post-copy|finalize> <current-dir> <target-dir>
