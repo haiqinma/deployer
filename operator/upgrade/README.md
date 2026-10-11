@@ -4,10 +4,9 @@
 `upgrade.sh` 编排；项目安装包中的 `scripts/upgrade.sh` 只负责项目特有动作。
 deployer 不再提供 `upgrade_<module>.sh` 这类项目级升级脚本。
 
-当前已接入统一升级流程的模块是 `chat`、`node`、`project`、`router`、`social`
-和 `warehouse`。`billing` 当前不是可升级模块：它的安装包还没有
-`scripts/upgrade.sh`、`scripts/copy-for-upgrade.sh` 和健康检查脚本，因此不要将
-`billing` 写入 `modules.conf`。接入前需要先按本 README 和
+当前已接入统一升级流程的模块是 `chat`、`node`、`project`、`router`、`social`、
+`warehouse` 和 `billing`。所有模块的安装包都必须提供 `scripts/upgrade.sh` 和健康检查脚本；
+接入前需要先按本 README 和
 [`specification/PACKAGING.md`](../../specification/PACKAGING.md) 补齐安装包契约并完成验证。
 
 ## 脚本入口
@@ -93,30 +92,32 @@ less /opt/logs/upgrade.log
 纳入统一升级流程的每个安装包必须包含可执行的 `scripts/upgrade.sh`，接口固定为：
 
 ```bash
-bash scripts/upgrade.sh <prepare|post-copy|finalize> <current-dir> <target-dir>
+bash scripts/upgrade.sh <prepare|copy-config|post-copy|finalize> <current-dir> <target-dir>
 ```
 
-三个阶段均由目标版本安装包中的脚本执行：
+四个阶段均由目标版本安装包中的脚本执行：
 
 1. `prepare`：停止服务前执行项目定制准备动作。
-2. `post-copy`：配置复制后、启动服务前执行迁移或静态资源发布。
-3. `finalize`：健康检查后、更新 `/opt/deploy/<module>` 软链接前执行收尾动作。
+2. `copy-config`：停止旧服务后、通用启动前迁移项目配置。
+3. `post-copy`：配置迁移后、启动服务前执行静态资源发布或其他动作。
+4. `finalize`：健康检查后、更新 `/opt/deploy/<module>` 软链接前执行收尾动作。
 
 正常情况下每个阶段返回 `0`。只有 `prepare` 可以返回 `10`，表示本次只执行项目
-定制动作，跳过通用的停止服务、配置复制、启动服务和健康检查；之后仍会调用
+定制动作，跳过通用的停止服务、配置迁移、启动服务和健康检查；之后仍会调用
 `post-copy`、`finalize`，并更新模块软链接。其他非零退出码都会使该模块升级失败。
 
 通用流程依次为：下载并校验制品、解压到 `/opt/deploy/<module>-v...`、执行
-`prepare`、停止旧服务、复制配置、执行 `post-copy`、启动新服务、执行
+`prepare`、停止旧服务、执行 `copy-config`、执行 `post-copy`、启动新服务、执行
 `health-check.sh --level all`（如果目标包提供）、执行 `finalize`、更新软链接，
 最后尝试执行配置备份和上传。
 
 当前项目的定制行为如下：
 
-- `chat`、`project`、`router`：标准钩子，不增加额外动作。
-- `node`：在 `post-copy` 迁移 secrets 文件并调整目标 `starter.sh` 的密码文件复用逻辑。
-- `social`：在 `post-copy` 发布 `web/dist` 并重启 Nginx。
-- `warehouse`：`all` 同时执行后端通用升级和前端发布，`backend` 只升级后端，
+- `chat`、`project`、`router`：在 `copy-config` 复制环境或 YAML 配置。
+- `node`：在 `copy-config` 迁移 secrets 文件并调整目标 `starter.sh` 的密码文件复用逻辑。
+- `billing`：在 `copy-config` 复制 `config.yaml`。
+- `social`：在 `copy-config` 复制 `config/`，在 `post-copy` 发布 `web/dist` 并重启 Nginx。
+- `warehouse`：在 `copy-config` 复制 `config.yaml`；`all` 同时执行后端通用升级和前端发布，`backend` 只升级后端，
   `frontend` 只发布前端并通过退出码 `10` 跳过后端服务切换。
 
 ## 升级后检查
