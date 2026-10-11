@@ -1,5 +1,7 @@
 ## 飞书通知脚本
 
+复制 `.env.template` 为 `.env`。每个场景使用 `<场景大写>_WEBHOOK_URL`、`<场景大写>_SECRET`、`<场景大写>_PREFIX`，当前脚本场景包括 `create_package`、`upgrade_service`、`monitor_service`、`release_notes`、`backup_config`、`backup_database` 和 `account_billing`。
+
 ### `common.sh`
 
 - 运行位置：代码编译节点或服务部署节点
@@ -13,7 +15,7 @@
 
 - 运行位置：代码编译节点或服务部署节点
 - 运行方式：通常由 `feishu-notify/common.sh` 或其他脚本调用，也可手动执行
-- 输入参数：`<场景> <消息>`；或使用 `--webhook`、`--secret`、`--prefix`、`--message`/`--file`、`--chunk-size`
+- 输入参数：`<场景> <消息>`；或使用 `--webhook`、`--secret`、`--prefix`、`--message`/`--file`、`--chunk-size`。`--file` 用于读取消息文件，长消息会按 chunk-size 分块发送
 - 配置文件：`.env`；按场景配置 `<场景大写>_WEBHOOK_URL`、`<场景大写>_SECRET`、`<场景大写>_PREFIX`
 - 作用：向飞书机器人发送文本消息，支持按长度分块和从文件读取消息
 - 日志文件：无独立日志文件；标准输出和错误输出由调用脚本重定向到其 `/opt/logs/*.log`
