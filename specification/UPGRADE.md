@@ -197,7 +197,7 @@ bash transfer_packages.sh download chat-v1.2.3-a1b2c3d.tar.gz
 5. 调用目标版本的 `scripts/upgrade.sh copy-config <current-dir> <target-dir>` 将配置复制到目标版本。
 6. 调用项目脚本的 `post-copy` 阶段。
 7. 启动目标服务：`bash scripts/starter.sh`。
-8. 如果目标版本存在 `scripts/health-check.sh`，执行 `bash scripts/health-check.sh --level all` 并按配置重试。
+8. 如果目标版本存在 `scripts/health-check.sh`，立即执行第一次 `bash scripts/health-check.sh --level all`；失败后按 `WAIT_SECONDS` 间隔重试。需要为慢启动服务预留启动时间时，使用 `HEALTH_CHECK_INITIAL_WAIT_SECONDS`，不要依赖固定长时间等待。
 9. 调用项目脚本的 `finalize` 阶段。
 
 

@@ -34,8 +34,9 @@ chmod 600 .env
 `.env` 时必须填写实际的 WebDAV 地址和凭据，不要把凭据提交到 Git。常用配置项：
 
 - `WEBDAV_PACKAGE_BASE_URL`、`WEBDAV_PACKAGE_AK`、`WEBDAV_PACKAGE_SK`：制品目录和认证信息。
-- `WAIT_SECONDS`：每次健康检查前等待的秒数，默认 `20`。
-- `RETRY_TIMES`：健康检查失败后的重试次数，默认 `3`。
+- `HEALTH_CHECK_INITIAL_WAIT_SECONDS`：首次启动后第一次健康检查前等待的秒数，默认 `0`；慢启动服务可按需配置。
+- `WAIT_SECONDS`：健康检查失败后的重试间隔，默认 `2`；第一次健康检查默认立即执行。
+- `RETRY_TIMES`：健康检查失败后的重试次数，默认 `10`；结合默认 2 秒间隔，首次检查立即执行后提供约 20 秒的快速轮询窗口。
 - `FILE_VERIFY`：可选 `sha256sum` 或 `md5sum`；为空表示不校验。
 - `WEBDAV_FLAG`：仅影响 `warehouse`，可选 `all`、`backend`、`frontend`。
 - `NOTIFY_DINGDING`、`NOTIFY_FEISHU`、`NOTIFY_SAME_VERSION`：通知开关。
@@ -108,13 +109,13 @@ bash scripts/upgrade.sh <prepare|copy-config|post-copy|finalize> <current-dir> <
 
 通用流程依次为：下载并校验制品、解压到 `/opt/deploy/<module>-v...`、执行
 `prepare`、停止旧服务、执行 `copy-config`、执行 `post-copy`、启动新服务、执行
-`health-check.sh --level all`（如果目标包提供）、执行 `finalize`、更新软链接，
+`health-check.sh --level all`（如果目标包提供；第一次检查默认立即执行，失败后按配置重试）、执行 `finalize`、更新软链接，
 最后尝试执行配置备份和上传。
 
 当前项目的定制行为如下：
 
 - `chat`、`project`、`router`：在 `copy-config` 复制环境或 YAML 配置。
-- `node`：在 `copy-config` 迁移 secrets 文件并调整目标 `starter.sh` 的密码文件复用逻辑。
+- `node`：在 `copy-config` 迁移 `config.js` 和加密 secrets vault；不复制 `secrets.passwordFile`，密码文件应使用版本目录之外的共享路径。
 - `billing`：在 `copy-config` 复制 `config.yaml`。
 - `social`：在 `copy-config` 复制 `config/`，在 `post-copy` 发布 `web/dist` 并重启 Nginx。
 - `warehouse`：在 `copy-config` 复制 `config.yaml`；`all` 同时执行后端通用升级和前端发布，`backend` 只升级后端，
