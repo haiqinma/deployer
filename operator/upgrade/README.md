@@ -108,7 +108,7 @@ bash scripts/upgrade.sh <prepare|copy-config|post-copy|finalize> <current-dir> <
 `post-copy`、`finalize`，并更新模块软链接。其他非零退出码都会使该模块升级失败。
 
 通用流程依次为：下载并校验制品、解压到 `/opt/deploy/<module>-v...`、执行
-`prepare`、停止旧服务、执行 `copy-config`、执行 `post-copy`、启动新服务、执行
+`prepare`、优雅停止旧服务并确认进程退出、执行 `copy-config`、执行 `post-copy`、启动新服务、执行
 `health-check.sh --level all`（如果目标包提供；第一次检查默认立即执行，失败后按配置重试）、执行 `finalize`、更新软链接，
 最后尝试执行配置备份和上传。
 
