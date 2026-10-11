@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -u
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+config_file="${ANALYZER_CONFIG:-${script_dir}/analyzer.conf}"
+set +e
+# The production Codex key is exported after the interactive guard in
+# /root/.bashrc, so use an interactive shell to load that existing environment.
+/usr/bin/bash -ic "/usr/bin/python3 -B '${script_dir}/analyze_errors.py' --config '${config_file}'"
+analyzer_status=$?
+set -e
+/usr/bin/python3 - "$config_file" "$analyzer_status" <<'PY'
+import json, subprocess, sys
+from datetime import date
+from pathlib import Path
+config = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+exit_code = int(sys.argv[2])
+summary_file = Path(config.get("results_dir", "results")) / date.today().isoformat() / "summary.json"
+counts, top = {}, []
+if summary_file.exists():
+    rows = json.loads(summary_file.read_text(encoding="utf-8"))
+    for row in rows:
+        status = row.get("status", "unknown")
+        counts[status] = counts.get(status, 0) + 1
+        if status in {"success", "failed"} and len(top) < 5:
+            top.append(f"- {status}: {(row.get('summary') or row.get('reason') or '')[:180]}")
+message = ["【ERROR 根因分析日报】", f"日期：{date.today().isoformat()}", f"结果：成功 {counts.get('success', 0)}，失败 {counts.get('failed', 0)}，跳过 {counts.get('skipped', 0)}，已完成 {counts.get('already_success', 0)}"]
+if top: message += ["", "【重点结果】", *top]
+message += ["", f"分析器退出码：{exit_code}"]
+notify = Path("/root/code/deployer/operator/feishu-notify/feishu_reminder.py")
+if notify.exists():
+    subprocess.run(["/usr/bin/python3", str(notify), "monitor_service", "--message", "\n".join(message)], check=False)
+PY
+exit "$analyzer_status"

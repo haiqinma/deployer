@@ -28,8 +28,8 @@
 2. `operator/upgrade/.env` 已正确配置。
 3. `operator/upgrade/modules.conf` 已填写待升级模块。
 4. 本地部署目录 `/opt/deploy` 下存在当前版本目录，且目录名符合 `模块名-v主版本.次版本.修订版本-7位commit` 格式。
-5. 当前版本和目标版本目录都存在 `scripts/starter.sh`、`scripts/copy-for-upgrade.sh` 和 `scripts/upgrade.sh`。
-6. 当前版本目录内存在项目升级脚本要求的配置文件。
+5. 当前版本目录存在 `scripts/starter.sh` 和 `scripts/copy-for-upgrade.sh`，目标安装包存在 `scripts/starter.sh` 和 `scripts/upgrade.sh`。
+6. 如果目标安装包提供 `scripts/health-check.sh`，该脚本可在目标目录中执行；当前版本目录内存在项目升级脚本要求的配置文件。
 7. 目标安装包内的顶层目录名与安装包文件名去掉 `.tar.gz` 后一致。
 8. 操作用户具备读写 `/opt/package`、`/opt/deploy`、`/opt/logs` 以及启动/停止服务所需权限。
 
@@ -188,7 +188,7 @@ bash transfer_packages.sh download chat-v1.2.3-a1b2c3d.tar.gz
 `operator/upgrade/upgrade.sh` 执行的通用行为：
 
 1. 查找当前版本目录和目标版本目录。
-2. 检查两边都存在 `scripts/starter.sh`，并检查当前版本存在 `scripts/copy-for-upgrade.sh`。
+2. 检查当前版本存在 `scripts/starter.sh` 和 `scripts/copy-for-upgrade.sh`，目标版本存在 `scripts/starter.sh`；目标版本的 `scripts/upgrade.sh` 在解压后单独检查。
 3. 调用项目脚本的 `prepare` 阶段。
 4. 在当前版本目录停止当前服务：`bash scripts/starter.sh stop`。
 5. 调用当前版本的 `scripts/copy-for-upgrade.sh` 将配置复制到目标版本。
@@ -236,7 +236,7 @@ bash scripts/health-check.sh --level all
 
 ## 回退操作
 
-主脚本 `upgrade.sh` 只会在远程版本高于本地版本时升级，不负责自动降级。需要回退时，按通用停止、复制、启动和健康检查流程手动将服务切回旧版本，并更新当前版本软链接。
+主脚本 `upgrade.sh` 只会在远程版本高于本地版本时升级，不负责自动降级。需要回退时，按通用停止、复制、启动和健康检查流程手动将服务切回旧版本，并更新当前版本软链接。项目如果有定制迁移或静态资源发布，还必须按项目自己的回退要求处理；主升级入口不会自动执行降级。
 
 示例：将 `chat` 从 `1.2.3` 回退到 `1.2.2`：
 
@@ -256,6 +256,7 @@ ln -sfn chat-v1.2.2-a1b2c3d /opt/deploy/chat
 - 回退后执行与升级后相同的日志、软链接、进程和健康检查验证。
 - `warehouse` 前端回退需要将旧版本 `web/dist` 重新复制到 `/usr/share/nginx/html/webdav` 并重启 nginx。
 - 如果升级失败发生在模块脚本执行后、软链接更新前，服务可能已经运行在目标目录，但 `/opt/deploy/<module>` 仍指向旧目录，需结合进程和日志确认实际运行目录。
+- `scripts/upgrade.sh` 的 `prepare` 返回 `10` 只跳过通用服务切换；`post-copy`、`finalize` 和软链接更新仍会继续执行。只有项目明确需要 custom-only 模式时才能使用该退出码。
 
 ## 常见故障处理
 
