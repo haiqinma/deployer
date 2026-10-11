@@ -391,8 +391,14 @@ mkdir -p "$package_root" "$deploy_root"
 log "webdav remote dir: ${WEBDAV_DIR_URL}/"
 log "webdav access key: ${WEBDAV_PACKAGE_AK:-<empty>}"
 
-WAIT_SECONDS=$(trim "${WAIT_SECONDS:-20}")
-RETRY_TIMES=$(trim "${RETRY_TIMES:-3}")
+HEALTH_CHECK_INITIAL_WAIT_SECONDS=$(trim "${HEALTH_CHECK_INITIAL_WAIT_SECONDS:-0}")
+WAIT_SECONDS=$(trim "${WAIT_SECONDS:-2}")
+RETRY_TIMES=$(trim "${RETRY_TIMES:-10}")
+
+if ! [[ "$HEALTH_CHECK_INITIAL_WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
+    log "ERROR! invalid HEALTH_CHECK_INITIAL_WAIT_SECONDS: ${HEALTH_CHECK_INITIAL_WAIT_SECONDS}, expected a non-negative integer"
+    exit 1
+fi
 
 if ! [[ "$WAIT_SECONDS" =~ ^[0-9]+$ ]]; then
     log "ERROR! invalid WAIT_SECONDS: ${WAIT_SECONDS}, expected a non-negative integer"
@@ -680,9 +686,17 @@ for module_name in "${MODULES[@]}"; do
             max_health_check_attempts=$((RETRY_TIMES + 1))
 
             for ((attempt = 1; attempt <= max_health_check_attempts; attempt++)); do
-                if (( WAIT_SECONDS > 0 )); then
-                    log "wait ${WAIT_SECONDS}s before ${module_name} health check attempt ${attempt}/${max_health_check_attempts}"
-                    sleep "$WAIT_SECONDS"
+                health_check_wait_seconds="$HEALTH_CHECK_INITIAL_WAIT_SECONDS"
+                if (( attempt > 1 )); then
+                    health_check_wait_seconds="$WAIT_SECONDS"
+                fi
+                if (( health_check_wait_seconds > 0 )); then
+                    if (( attempt == 1 )); then
+                        log "wait ${health_check_wait_seconds}s before initial ${module_name} health check"
+                    else
+                        log "wait ${health_check_wait_seconds}s before ${module_name} health check retry ${attempt}/${max_health_check_attempts}"
+                    fi
+                    sleep "$health_check_wait_seconds"
                 fi
 
                 log "health check target ${module_name} attempt ${attempt}/${max_health_check_attempts}: cd ${EXTRACTED_DIR} && scripts/health-check.sh --level all"
