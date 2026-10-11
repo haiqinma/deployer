@@ -2,7 +2,7 @@
 
 该目录提供一个无第三方依赖的 Python 编排器：读取指定模块当天的
 `logs/error.log`，做脱敏、规范化、指纹去重和预算控制，然后使用已配置好的
-Codex CLI 进行只读根因分析。它不修改 `operator/monitor`，也不会根据分析结果自动修复服务。
+Codex CLI 进行只读根因分析，并在同一份报告的 `recommended_actions` 字段给出解决方案和人工执行步骤。它不修改 `operator/monitor`，也不会根据分析结果自动修复服务。
 
 ## 配置
 
@@ -34,12 +34,19 @@ python3 /root/code/deployer/operator/analyer/analyze_errors.py \
 `flock`、Python、Codex 的绝对路径和运行用户权限；不要同时把同一个任务写入
 root 用户 crontab 和 `/etc/crontab`。
 
+生产任务通过 `run_analyzer.sh` 启动：它加载 Codex 运行环境，执行分析，并复用
+`monitor_service` 飞书场景发送日报，即使分析失败也会发送失败数量和原因。
+
 ## 输出
 
 - `state.db`：指纹、状态、次数、重试和结果路径
 - `results/YYYY-MM-DD/<module>/<fingerprint>.json`：单组结构化结果
 - `results/YYYY-MM-DD/summary.json` 和 `summary.md`：当天汇总
 - `work/`：Codex 调用期间的临时文件，成功或失败后删除
+
+每个成功报告同时包含 `root_cause`（根因判断）和
+`recommended_actions`（解决方案/人工执行步骤）。证据不足时必须标记为
+`unknown`，并列出 `missing_information`。
 
 Codex 非零退出、超时、非法 JSON 或结果字段不完整时不会标记成功，状态会保留
 为 `failed`，下次达到退避时间后可重试。

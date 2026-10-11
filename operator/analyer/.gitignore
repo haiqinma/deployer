@@ -4,3 +4,6 @@ state.db
 state.db-*
 results/
 work/
+# Host-specific production configuration.
+analyzer.conf
+modules.conf

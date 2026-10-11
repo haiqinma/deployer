@@ -34,5 +34,5 @@
     "first_seen": {"type": "string"},
     "last_seen": {"type": "string"}
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }
