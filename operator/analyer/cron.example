@@ -1,0 +1,4 @@
+# Install in /etc/crontab after copying analyzer.conf.example to analyzer.conf
+# and reviewing the configured paths. Runs daily at 23:00 (within 23:00-24:00).
+# The system crontab includes the user field.
+0 23 * * * root /usr/bin/flock -n /run/lock/deployer-error-analyzer.lock /root/code/deployer/operator/analyer/run_analyzer.sh >> /opt/logs/error-analyzer.log 2>&1
