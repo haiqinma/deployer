@@ -13,7 +13,9 @@
 
 - 运行位置：代码编译节点或服务部署节点
 - 运行方式：通常由备份脚本调用，也可手动执行
-- 输入参数：`upload <绝对文件路径>` 或 `download <本地目录>`
+- 输入参数：`upload <绝对文件路径>` 或 `download <已存在的本地目录>`
 - 配置文件：`.env`，或由 `WEBDAV_FILE_ENV_FILE` 指定的环境文件
 - 作用：使用 WebDAV 凭据上传单个文件，或下载远端目录中的全部文件
 - 日志文件：`/opt/logs/transfer-file.log`
+
+`.env` 必须提供 `WEBDAV_FILE_BASE_URL`、`WEBDAV_FILE_AK`、`WEBDAV_FILE_SK`。备份脚本可通过 `WEBDAV_FILE_ENV_FILE` 临时指定配置文件；`download` 会列出远端目录并下载其中所有文件，不支持指定单个远端文件名。

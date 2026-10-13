@@ -14,6 +14,8 @@ chmod 700 /root/code/deployer/operator/analyer
 chmod 600 /root/code/deployer/operator/analyer/analyzer.conf
 ```
 
+`analyzer.conf` 是 JSON 配置，不是 shell 环境文件；`modules.conf` 每行一个模块名。`deploy_root`、`error_log_name`、`daily_groups`、`total_chars` 等字段分别控制日志位置、每日分析数量和输入预算。
+
 确认 `analyzer.conf` 中的 `codex_command`、日志根目录、结果目录和模块列表后再运行。
 状态库、结果和工作文件默认都放在本目录下，不需要额外创建运行环境。
 
@@ -55,3 +57,9 @@ root 用户 crontab 和 `/etc/crontab`。
 
 Codex 非零退出、超时、非法 JSON 或结果字段不完整时不会标记成功，状态会保留
 为 `failed`，下次达到退避时间后可重试。
+
+可运行单元测试：
+
+```bash
+python3 -m unittest discover -s tests -v
+```
