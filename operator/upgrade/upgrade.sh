@@ -675,7 +675,7 @@ for module_name in "${MODULES[@]}"; do
 
     if [[ "$service_upgrade_enabled" -eq 1 ]]; then
         log "start target ${module_name}: cd ${EXTRACTED_DIR} && scripts/starter.sh"
-        if ! (cd "$EXTRACTED_DIR" && bash scripts/starter.sh >> "$LOGFILE" 2>&1); then
+        if ! (cd "$EXTRACTED_DIR" && bash scripts/starter.sh) 2>&1 | tee -a "$LOGFILE" </dev/null; then
             log "ERROR! failed to start target ${module_name} service"
             overall_status=1
             continue
