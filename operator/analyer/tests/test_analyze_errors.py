@@ -21,6 +21,20 @@ class AnalyzerTests(unittest.TestCase):
         self.assertIn("[time]", normalized)
         self.assertIn("[n]", normalized)
 
+    def test_normalize_redacts_spaced_request_ids(self):
+        value = "ERROR upstream error (request id: 202610120451122356596808268d9d6upjydiy)"
+        normalized = analyze_errors.normalize_error(value)
+        self.assertNotIn("202610120451122356596808268d9d6upjydiy", normalized)
+        self.assertIn("[id_redacted]", normalized)
+
+    def test_normalize_redacts_high_cardinality_log_ids(self):
+        value = 'ERROR user_id="user-1" token_id="token-1" channel_id="channel-1" group="0123456789abcdef"'
+        normalized = analyze_errors.normalize_error(value)
+        self.assertNotIn("user-1", normalized)
+        self.assertNotIn("token-1", normalized)
+        self.assertNotIn("channel-1", normalized)
+        self.assertNotIn("0123456789abcdef", normalized)
+
     def test_read_groups_filters_date_and_deduplicates(self):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / "error.log"
@@ -58,6 +72,21 @@ class AnalyzerTests(unittest.TestCase):
             analyze_errors.upsert_group(connection, group, "success")
             connection.commit()
             self.assertFalse(analyze_errors.should_analyze(connection, group, 0))
+
+    def test_unknown_success_is_reanalyzed_after_backoff(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "state.db"
+            result = Path(directory) / "result.json"
+            result.write_text(json.dumps({"root_cause": {"category": "unknown"}}), encoding="utf-8")
+            connection = analyze_errors.open_database(state)
+            group = analyze_errors.ErrorGroup("router", "abc", "error", ("error",), 1, "a", "b")
+            analyze_errors.upsert_group(connection, group, "success", result_path=str(result))
+            connection.execute(
+                "UPDATE error_groups SET updated_at = ? WHERE fingerprint = ?",
+                ((dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=10)).isoformat(), group.fingerprint),
+            )
+            connection.commit()
+            self.assertTrue(analyze_errors.should_analyze(connection, group, 1))
 
     def test_validate_result_adds_group_metadata(self):
         group = analyze_errors.ErrorGroup("router", "abc", "error", ("error",), 2, "a", "b")

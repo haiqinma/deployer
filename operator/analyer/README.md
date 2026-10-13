@@ -48,5 +48,10 @@ root 用户 crontab 和 `/etc/crontab`。
 `recommended_actions`（解决方案/人工执行步骤）。证据不足时必须标记为
 `unknown`，并列出 `missing_information`。
 
+分组前会脱敏时间戳、请求/追踪标识以及用户、令牌、渠道等高基数 ID，避免同一类
+错误因动态标识符被拆成大量组，也避免把这些标识符发送给 Codex。日报中的“成功”
+表示分析调用完成；真正的根因分类请以 `confirmed`、`likely` 或 `unknown` 为准。
+其中 `unknown` 报告会在退避时间后重新分析，只有已确认的根因才会永久跳过。
+
 Codex 非零退出、超时、非法 JSON 或结果字段不完整时不会标记成功，状态会保留
 为 `failed`，下次达到退避时间后可重试。

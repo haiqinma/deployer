@@ -39,7 +39,13 @@ SECRET_PATTERNS = (
     re.compile(r"(?i)\b(sk-[a-z0-9_-]+|ak-[a-z0-9_-]+)\b"),
 )
 ID_PATTERNS = (
-    re.compile(r"(?i)\b(?:request|trace|correlation)[_-]?id\s*[:=]\s*[\w.-]+"),
+    # Upstream messages commonly spell these fields as "request id" or
+    # "trace id" rather than using an underscore/hyphen.
+    re.compile(r"(?i)\b(?:request|trace|correlation)[\s_-]?id\s*[:=]\s*[\w.-]+"),
+    # These identifiers are high-cardinality and must not split equivalent
+    # error groups or leak into the analysis prompt.
+    re.compile(r"(?i)\b(?:user|token|channel)[\s_-]?id\s*[:=]\s*\"?[\w.-]+\"?"),
+    re.compile(r"(?i)\bgroup\s*[:=]\s*\"?[0-9a-f]{16,}\"?"),
     re.compile(r"\b[0-9a-f]{8}-[0-9a-f-]{27,}\b"),
     re.compile(r"\b0x[0-9a-f]+\b"),
 )
@@ -260,13 +266,23 @@ def open_database(path: Path) -> sqlite3.Connection:
 
 def should_analyze(connection: sqlite3.Connection, group: ErrorGroup, retry_after: int) -> bool:
     row = connection.execute(
-        "SELECT status, updated_at FROM error_groups WHERE fingerprint = ?", (group.fingerprint,)
+        "SELECT status, updated_at, result_path FROM error_groups WHERE fingerprint = ?", (group.fingerprint,)
     ).fetchone()
     if row is None:
         return True
-    status, updated_at = row
+    status, updated_at, result_path = row
     if status == "success":
-        return False
+        # A successful parse is not the same as a confirmed root cause. Keep
+        # unresolved reports eligible for fresh evidence on the next run.
+        category = ""
+        if result_path:
+            try:
+                value = json.loads(Path(result_path).read_text(encoding="utf-8"))
+                category = str(value.get("root_cause", {}).get("category", ""))
+            except (OSError, json.JSONDecodeError, AttributeError):
+                category = ""
+        if category != "unknown":
+            return False
     try:
         updated = dt.datetime.fromisoformat(updated_at)
         age = (dt.datetime.now(dt.timezone.utc) - updated).total_seconds()
@@ -440,6 +456,7 @@ def write_summary(results_dir: Path, target_date: dt.date, summary: list[dict[st
                 f"## {item['module']} / `{item['fingerprint'][:12]}`",
                 f"- 状态：{item['status']}",
                 f"- 次数：{item['occurrences']}",
+                *([f"- 根因分类：{item['category']}"] if item.get("category") else []),
                 f"- 摘要：{item.get('summary', item.get('reason', ''))}",
                 "",
             ]
@@ -525,6 +542,8 @@ def main() -> int:
                             "status": "success",
                             "occurrences": group.occurrences,
                             "summary": result.get("summary", ""),
+                            "category": result.get("root_cause", {}).get("category", "unknown"),
+                            "confidence": result.get("confidence"),
                         }
                     )
                 except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as exc:
