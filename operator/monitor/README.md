@@ -9,7 +9,7 @@ cp .env.template .env
 chmod 600 .env
 ```
 
-`modules.conf` 每行一个模块名。`.env` 可设置 `NOTIFY_DINGDING`、`NOTIFY_FEISHU`、`DINGTALK_NEED_AT`、`NOTIFY_FROM`；通知凭据分别放在对应通知目录的 `.env` 中。
+`modules.conf` 每行一个模块名。`.env` 可设置 `NOTIFY_DINGDING`、`NOTIFY_FEISHU`、`DINGTALK_NEED_AT`、`NOTIFY_FROM`；通知凭据分别放在对应通知目录的 `.env` 中。`NOTIFY_FEISHU` 仅控制服务日志监控 `monitor.sh` 的飞书通知。
 
 ### `monitor.sh`
 
@@ -25,8 +25,8 @@ chmod 600 .env
 - 运行位置：服务部署节点
 - 运行方式：通常配置为周期性任务执行
 - 输入参数：无
-- 配置文件：`.env`，主要使用 `DISK_USAGE_THRESHOLD`（0-100 的整数，默认 80）、`NOTIFY_FEISHU`、`NOTIFY_FROM`
-- 作用：检查根分区 `/` 使用率，超过阈值时发送飞书磁盘空间告警；如果存在 `/usr/local/bin/certbot`，同时检查证书有效期，剩余不足 23 天时通过 `monitor_service` 场景发送续签提醒
+- 配置文件：`.env`，主要使用 `DISK_USAGE_THRESHOLD`（大于 0 且小于 100 才启用）、`SSL_VALID_THRESHOLD`（大于 0 才启用，自动限制在 3 至 90 天）、`NOTIFY_FROM`
+- 作用：检查根分区 `/` 使用率，超过有效磁盘阈值时发送飞书磁盘空间告警；存在有效证书阈值且 `/usr/local/bin/certbot` 可用时，检查证书有效期并发送续签提醒。主机监控告警不受 `NOTIFY_FEISHU` 控制
 - 日志文件：`/opt/logs/monitor-host.log`
 
 ### `cleanup-item.py`
