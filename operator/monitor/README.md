@@ -26,7 +26,7 @@ chmod 600 .env
 - 运行方式：通常配置为周期性任务执行
 - 输入参数：无
 - 配置文件：`.env`，主要使用 `DISK_USAGE_THRESHOLD`（0-100 的整数，默认 80）、`NOTIFY_FEISHU`、`NOTIFY_FROM`
-- 作用：检查根分区 `/` 使用率，超过阈值时发送飞书磁盘空间告警
+- 作用：检查根分区 `/` 使用率，超过阈值时发送飞书磁盘空间告警；如果存在 `/usr/local/bin/certbot`，同时检查证书有效期，剩余不足 23 天时通过 `monitor_service` 场景发送续签提醒
 - 日志文件：`/opt/logs/monitor-host.log`
 
 ### `cleanup-item.py`
