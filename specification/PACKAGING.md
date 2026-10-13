@@ -22,7 +22,9 @@
 - 脚本应优先使用相对路径定位当前项目目录，避免写死开发机绝对路径。
 - `stop` 必须先发送 `SIGTERM`，等待主进程退出；超时后才允许发送 `SIGKILL`，并且只有确认进程已退出时才能返回成功。
 - `restart` 必须在 `stop` 成功确认进程退出后才能执行 `start`；停止失败时不得启动新进程。
-- 停止等待时间应支持环境变量配置，默认值应足以覆盖正常优雅停机；强制终止后仍无法确认退出时必须返回非零退出码。
+- 停止等待时间应支持环境变量配置：`STOP_TIMEOUT_SECONDS` 控制优雅停止等待时间，`FORCE_STOP_TIMEOUT_SECONDS` 控制强制终止后的确认时间；默认值分别为 `30` 秒和 `5` 秒。
+- 强制终止后仍无法确认退出时必须返回非零退出码；`restart` 必须保留该失败码，不得继续启动。
+- 停止脚本应清理已确认退出进程的 PID 文件；发现失效 PID 文件时不得误杀同 PID 的其他进程。
 
 建议示例：
 
@@ -31,6 +33,12 @@
 ./scripts/starter.sh start
 ./scripts/starter.sh stop
 ./scripts/starter.sh restart
+```
+
+停止等待时间可以按服务实际优雅停机时间调整，但不得通过缩短等待时间掩盖服务未完成资源释放的问题：
+
+```bash
+STOP_TIMEOUT_SECONDS=60 FORCE_STOP_TIMEOUT_SECONDS=10 ./scripts/starter.sh restart
 ```
 
 ## 打包脚本规范
@@ -206,6 +214,7 @@ v1.0.1
 5. 执行 `scripts/starter.sh`。
 6. 执行 `scripts/health-check.sh --level readiness`，确认服务已经就绪。
 7. 执行 `scripts/test.sh --suite smoke`，确认核心功能能够正常工作。
+8. 使用临时进程或测试实例验证 `stop` 先优雅退出、超时后才强制终止，且停止失败时 `restart` 不会启动新进程。
 
 建议验证命令：
 

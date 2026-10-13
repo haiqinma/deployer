@@ -243,6 +243,16 @@ cd ..
 ./scripts/starter.sh
 ```
 
+### 4.1 停止和重启
+
+```bash
+./scripts/starter.sh stop
+./scripts/starter.sh restart
+```
+
+`stop` 必须先等待服务优雅退出，超时后才允许强制终止；`restart` 只有在确认旧进程退出后才会启动新进程。停止等待时间可通过项目文档定义的
+`STOP_TIMEOUT_SECONDS` 和 `FORCE_STOP_TIMEOUT_SECONDS` 调整，停止失败时应先处理残留进程，不要继续重复重启。
+
 ### 5. 验证项目
 
 ```bash

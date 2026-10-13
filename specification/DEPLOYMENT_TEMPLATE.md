@@ -30,6 +30,8 @@
 - 部署对象必须是安装包，而不是开发目录
 - 启动入口必须是安装包内的 `scripts/starter.sh`
 - 健康检查入口必须遵守 [HEALTH_CHECK.md](./HEALTH_CHECK.md)，统一使用 `scripts/health-check.sh`
+- `scripts/starter.sh stop` 必须先优雅停止服务，超时后才允许强制终止，并在确认进程退出后成功返回
+- `scripts/starter.sh restart` 只有在停止成功后才能启动；停止失败时必须返回非零且不得启动新进程
 - 升级后的功能验证必须遵守 [AUTOMATED_TESTING.md](./AUTOMATED_TESTING.md)，统一使用 `scripts/test.sh --suite smoke`
 - 配置说明必须以安装包内实际提供的配置模板为准，例如 `.env.template`、`config.yaml.template`、`config.js.template`
 - 文档中不得出现“直接在开发目录执行”的部署方式，除非明确标记为开发调试，不属于正式部署
@@ -98,6 +100,7 @@
 - 启动脚本执行失败
 - 端口冲突
 - 权限不足
+- 停止超时、旧进程残留或重启时端口被占用
 
 ## 推荐结构
 
