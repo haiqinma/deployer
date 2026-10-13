@@ -17,10 +17,12 @@ init_log_file "monitor-host.log"
 env_file="${script_dir}/.env"
 feishu_scene="monitor_service"
 notify_from=""
-notify_feishu_enabled="False"
-disk_usage_threshold="${DISK_USAGE_THRESHOLD:-80}"
+disk_usage_threshold=""
+disk_monitor_enabled="False"
+disk_usage_threshold_value=0
 certbot_command="${CERTBOT_COMMAND:-/usr/local/bin/certbot}"
-certificate_expiry_threshold=23
+certificate_monitor_enabled="False"
+certificate_expiry_threshold=0
 
 if [[ -f "$env_file" ]]; then
     set -a
@@ -30,18 +32,34 @@ if [[ -f "$env_file" ]]; then
 fi
 
 notify_from="${NOTIFY_FROM:-}"
-notify_feishu_enabled="${NOTIFY_FEISHU:-False}"
-disk_usage_threshold="${DISK_USAGE_THRESHOLD:-80}"
-
-if ! [[ "$disk_usage_threshold" =~ ^[0-9]+$ ]]; then
-    log "ERROR! DISK_USAGE_THRESHOLD must be an integer between 0 and 100: ${disk_usage_threshold}"
-    exit 1
+disk_usage_threshold="${DISK_USAGE_THRESHOLD:-}"
+if [[ "$disk_usage_threshold" =~ ^[0-9]+$ ]]; then
+    disk_usage_threshold_value=$((10#$disk_usage_threshold))
+    if (( disk_usage_threshold_value > 0 && disk_usage_threshold_value < 100 )); then
+        disk_monitor_enabled="True"
+    else
+        log "DISK_USAGE_THRESHOLD is outside (0, 100), skip disk usage check: ${disk_usage_threshold}"
+    fi
+elif [[ -n "$disk_usage_threshold" ]]; then
+    log "DISK_USAGE_THRESHOLD is not a positive integer below 100, skip disk usage check: ${disk_usage_threshold}"
 fi
 
-disk_usage_threshold_value=$((10#$disk_usage_threshold))
-if (( disk_usage_threshold_value > 100 )); then
-    log "ERROR! DISK_USAGE_THRESHOLD must be an integer between 0 and 100: ${disk_usage_threshold}"
-    exit 1
+ssl_valid_threshold="${SSL_VALID_THRESHOLD:-}"
+if [[ "$ssl_valid_threshold" =~ ^[0-9]+$ ]]; then
+    ssl_valid_threshold_value=$((10#$ssl_valid_threshold))
+    if (( ssl_valid_threshold_value > 0 )); then
+        certificate_expiry_threshold=$ssl_valid_threshold_value
+        if (( certificate_expiry_threshold > 90 )); then
+            certificate_expiry_threshold=90
+        elif (( certificate_expiry_threshold < 3 )); then
+            certificate_expiry_threshold=3
+        fi
+        certificate_monitor_enabled="True"
+    else
+        log "SSL_VALID_THRESHOLD is not positive, skip certificate expiry check: ${ssl_valid_threshold}"
+    fi
+elif [[ -n "$ssl_valid_threshold" ]]; then
+    log "SSL_VALID_THRESHOLD is not a positive integer, skip certificate expiry check: ${ssl_valid_threshold}"
 fi
 
 if [[ -z "$notify_from" ]]; then
@@ -158,16 +176,21 @@ check_certificate_expiry() {
         log "certificate ${certificate_name} has ${days_remaining} days remaining"
         if (( days_remaining < certificate_expiry_threshold )); then
             log "certificate ${certificate_name} is below the ${certificate_expiry_threshold}-day renewal threshold"
-            if [[ "$notify_feishu_enabled" == "True" || "$notify_feishu_enabled" == "true" ]]; then
-                notify_feishu "$(format_certificate_alert "$certificate_name" "$days_remaining")"
-            else
-                log "feishu notification is disabled, skip certificate renewal notification"
-            fi
+            notify_feishu "$(format_certificate_alert "$certificate_name" "$days_remaining")"
         fi
     done <<< "$certificate_records"
 }
 
-check_certificate_expiry
+if [[ "$certificate_monitor_enabled" == "True" ]]; then
+    check_certificate_expiry
+else
+    log "certificate expiry check is disabled"
+fi
+
+if [[ "$disk_monitor_enabled" != "True" ]]; then
+    log "disk usage check is disabled"
+    exit 0
+fi
 
 if ! df_output=$(df -hP / 2>&1); then
     log "ERROR! failed to query root filesystem usage: ${df_output}"
@@ -197,14 +220,6 @@ fi
 
 log "root filesystem usage exceeds the alert threshold, sending notification"
 message=$(format_disk_alert "$root_filesystem" "$root_size" "$root_used" "$root_available" "$root_usage")
-
-case "$notify_feishu_enabled" in
-    True|true)
-        notify_feishu "$message"
-        ;;
-    *)
-        log "feishu notification is disabled, skip notification"
-        ;;
-esac
+notify_feishu "$message"
 
 exit 0
