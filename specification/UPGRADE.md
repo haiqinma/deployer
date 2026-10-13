@@ -47,6 +47,11 @@ WEBDAV_PACKAGE_BASE_URL="https://example.com/dav/package"
 WEBDAV_PACKAGE_AK="access_key"
 WEBDAV_PACKAGE_SK="secret_key"
 WEBDAV_FLAG="all"
+STOP_TIMEOUT_SECONDS="30"
+FORCE_STOP_TIMEOUT_SECONDS="5"
+HEALTH_CHECK_INITIAL_WAIT_SECONDS="0"
+WAIT_SECONDS="2"
+RETRY_TIMES="10"
 NOTIFY_FROM=""
 NOTIFY_SAME_VERSION="False"
 NOTIFY_DINGDING="False"
@@ -63,6 +68,11 @@ FILE_VERIFY=""
 | `WEBDAV_PACKAGE_AK` | WebDAV 访问账号 |
 | `WEBDAV_PACKAGE_SK` | WebDAV 访问密钥 |
 | `WEBDAV_FLAG` | `warehouse` 专用升级范围，可选 `all`、`backend`、`frontend`，默认 `all` |
+| `STOP_TIMEOUT_SECONDS` | starter 优雅停止等待时间，默认 `30`；升级器会将该环境变量传给项目脚本 |
+| `FORCE_STOP_TIMEOUT_SECONDS` | starter 强制终止后的退出确认时间，默认 `5`；升级器会将该环境变量传给项目脚本 |
+| `HEALTH_CHECK_INITIAL_WAIT_SECONDS` | 启动目标服务后第一次健康检查前的等待时间，默认 `0` |
+| `WAIT_SECONDS` | 健康检查失败后的重试间隔，默认 `2` |
+| `RETRY_TIMES` | 健康检查失败后的重试次数，默认 `10`；总尝试次数为 `RETRY_TIMES + 1` |
 | `NOTIFY_FROM` | 通知中的环境/来源标识，空值时使用主机名 |
 | `NOTIFY_SAME_VERSION` | 远程版本未高于当前版本时是否发送通知 |
 | `NOTIFY_DINGDING` | 是否发送钉钉通知 |
@@ -82,7 +92,9 @@ chat
 node
 project
 router
+social
 warehouse
+billing
 ```
 
 主升级脚本会按文件中的模块顺序逐个处理。某个模块失败时，脚本会记录失败状态并继续处理后续模块，最终以非零退出码结束。
@@ -170,9 +182,10 @@ bash transfer_packages.sh download chat-v1.2.3-a1b2c3d.tar.gz
 10. 调用目标安装包的 `scripts/upgrade.sh prepare <current-dir> <target-dir>`；退出码 `10` 表示只执行项目定制动作，不执行通用服务切换。
 11. 调用当前版本 `scripts/starter.sh stop`；只有脚本确认旧进程已退出后，才调用 `scripts/upgrade.sh copy-config <current-dir> <target-dir>` 迁移项目配置。
 12. 调用 `scripts/upgrade.sh post-copy <current-dir> <target-dir>` 执行静态资源发布或其他项目定制动作。
-13. 执行通用的启动和健康检查流程。
-14. 调用 `scripts/upgrade.sh finalize <current-dir> <target-dir>`，然后更新 `/opt/deploy/<module>` 软链接。
-15. 发送升级完成或异常通知。
+13. 执行目标版本的 `scripts/starter.sh` 启动服务；启动前必须确认旧服务已经退出。
+14. 如果目标版本存在 `scripts/health-check.sh`，立即执行第一次健康检查，失败后按 `HEALTH_CHECK_INITIAL_WAIT_SECONDS`、`WAIT_SECONDS` 和 `RETRY_TIMES` 配置重试。
+15. 执行 `scripts/upgrade.sh finalize <current-dir> <target-dir>`，然后更新 `/opt/deploy/<module>` 软链接。
+16. 发送升级完成或异常通知。
 
 日志文件：
 
@@ -193,10 +206,11 @@ bash transfer_packages.sh download chat-v1.2.3-a1b2c3d.tar.gz
 1. 查找当前版本目录和目标版本目录。
 2. 检查当前版本和目标版本存在 `scripts/starter.sh`、`scripts/upgrade.sh`；目标版本的 `scripts/upgrade.sh` 在解压后单独检查。
 3. 调用项目脚本的 `prepare` 阶段。
-4. 在当前版本目录停止当前服务：`bash scripts/starter.sh stop`。
+4. 在当前版本目录执行 `bash scripts/starter.sh stop`。脚本必须先发送 `SIGTERM`，等待进程退出；超时后才允许发送 `SIGKILL`，并在返回成功前再次确认进程已经退出。
+   停止返回非零时，升级器必须停止该模块后续流程，不得复制配置或启动目标服务。
 5. 调用目标版本的 `scripts/upgrade.sh copy-config <current-dir> <target-dir>` 将配置复制到目标版本。
 6. 调用项目脚本的 `post-copy` 阶段。
-7. 启动目标服务：`bash scripts/starter.sh`。
+7. 启动目标服务：`bash scripts/starter.sh`。如果启动失败，不得把端口监听或旧 PID 残留当作成功。
 8. 如果目标版本存在 `scripts/health-check.sh`，立即执行第一次 `bash scripts/health-check.sh --level all`；失败后按 `WAIT_SECONDS` 间隔重试。需要为慢启动服务预留启动时间时，使用 `HEALTH_CHECK_INITIAL_WAIT_SECONDS`，不要依赖固定长时间等待。
 9. 调用项目脚本的 `finalize` 阶段。
 
@@ -246,6 +260,7 @@ bash scripts/health-check.sh --level all
 ```bash
 cd /opt/deploy/chat-v1.2.3-a1b2c3d
 bash scripts/starter.sh stop
+# 按项目提供的 status/进程检查确认旧服务已退出；PID 文件位置不统一，不要写死路径。
 bash scripts/upgrade.sh copy-config /opt/deploy/chat-v1.2.3-a1b2c3d /opt/deploy/chat-v1.2.2-a1b2c3d
 cd /opt/deploy/chat-v1.2.2-a1b2c3d
 bash scripts/starter.sh
@@ -272,6 +287,8 @@ ln -sfn chat-v1.2.2-a1b2c3d /opt/deploy/chat
 | 当前版本目录不存在 | `/opt/deploy` 目录缺失或命名不规范 | 修正部署目录或软链接 |
 | 解压失败或顶层目录不匹配 | 安装包结构不符合约定 | 重新打包，确保顶层目录与包名一致 |
 | 项目升级脚本缺失或阶段不完整 | 目标安装包没有 `scripts/upgrade.sh` 或不支持 `copy-config` | 在项目中补齐标准阶段并重新打包 |
+| 旧服务停止失败或无法确认进程退出 | 优雅停机超时、强制终止后仍有进程存活，或 PID 文件失效 | 查看模块日志和进程状态；不要启动目标版本，先处理残留进程或人工回退 |
+| 重启后端口被占用 | 旧服务未完全退出，或存在未由 starter 管理的冲突进程 | 确认旧 PID、监听端口和进程命令；停止失败时不要反复执行 `restart` |
 | 配置文件缺失 | 当前版本目录缺少 `.env`、`config.js` 或 `config.yaml` | 从备份或配置中心恢复后重试 |
 | 健康检查失败 | 目标服务启动异常或依赖不可用 | 查看模块日志和健康检查输出，修复后重试或回退 |
 | nginx 重启失败 | `warehouse` 前端发布权限或 nginx 配置异常 | 检查 systemd/nginx 日志，修复后重新发布前端 |
@@ -284,6 +301,7 @@ ln -sfn chat-v1.2.2-a1b2c3d /opt/deploy/chat
 - [ ] 确认 `.env` 中 WebDAV 地址和认证信息正确。
 - [ ] 确认目标安装包和校验文件已上传到 WebDAV。
 - [ ] 确认当前版本部署目录和配置文件存在。
+- [ ] 确认当前版本 `scripts/starter.sh stop` 遵守优雅停机和退出确认约束。
 - [ ] 确认已准备回退版本目录和回退命令。
 
 升级中：
@@ -297,4 +315,5 @@ ln -sfn chat-v1.2.2-a1b2c3d /opt/deploy/chat
 - [ ] 确认 `/opt/deploy/<module>` 软链接已更新。
 - [ ] 确认服务进程和端口正常。
 - [ ] 执行健康检查或 smoke test。
+- [ ] 确认升级日志中没有停止失败、端口冲突或旧 PID 残留。
 - [ ] 确认通知已发送或手动同步升级结果。

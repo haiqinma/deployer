@@ -23,7 +23,8 @@ git config --global user.email "<your-email>"
 ssh -T git@github.com
 ```
 
-如果 `ssh -T git@github.com` 无法正常识别当前 GitHub 账号，需要先配置 SSH 公钥。可参考 [README.md](/root/code/deployer/developer/git/README.md)。
+如果 `ssh -T git@github.com` 无法正常识别当前 GitHub 账号，需要先配置 SSH 公钥。可参考
+[GitHub SSH 文档](https://docs.github.com/en/authentication/connecting-to-github-with-ssh)。
 
 ### 远程仓库配置
 
