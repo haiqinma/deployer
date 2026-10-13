@@ -19,6 +19,8 @@ feishu_scene="monitor_service"
 notify_from=""
 notify_feishu_enabled="False"
 disk_usage_threshold="${DISK_USAGE_THRESHOLD:-80}"
+certbot_command="${CERTBOT_COMMAND:-/usr/local/bin/certbot}"
+certificate_expiry_threshold=23
 
 if [[ -f "$env_file" ]]; then
     set -a
@@ -93,6 +95,79 @@ format_disk_alert() {
 2. 清理无用文件或扩容系统盘
 EOF
 }
+
+format_certificate_alert() {
+    local certificate_name=$1
+    local days_remaining=$2
+
+    cat <<EOF
+【域名证书通知】域名证书续签提醒
+
+发现时间：$(date '+%Y-%m-%d %H:%M')
+
+通知内容：
+- 域名信息：${certificate_name}
+- 剩余有效期：${days_remaining} 天
+- 域名节点：${notify_from}
+
+建议操作：
+1. 登录 ${notify_from} 执行/usr/local/bin/certbot renew --quiet 进行证书续签
+EOF
+}
+
+check_certificate_expiry() {
+    if [[ ! -x "$certbot_command" ]]; then
+        log "certbot is not installed at ${certbot_command}, skip certificate expiry check"
+        return 0
+    fi
+
+    local certificates_output
+    if ! certificates_output=$("$certbot_command" certificates 2>&1); then
+        log "WARN! failed to query certbot certificates: ${certificates_output}"
+        return 0
+    fi
+
+    local certificate_records
+    if ! certificate_records=$(printf '%s\n' "$certificates_output" | awk '
+        /Certificate Name:/ {
+            name = $0
+            sub(/^.*Certificate Name:[[:space:]]*/, "", name)
+            sub(/[[:space:]]*$/, "", name)
+        }
+        /VALID:/ {
+            valid = $0
+            sub(/^.*VALID:[[:space:]]*/, "", valid)
+            sub(/[^0-9].*$/, "", valid)
+            if (name != "" && valid ~ /^[0-9]+$/) {
+                print name "\t" valid
+                name = ""
+            }
+        }
+    '); then
+        log "WARN! failed to parse certbot certificate output"
+        return 0
+    fi
+
+    if [[ -z "$certificate_records" ]]; then
+        log "WARN! no certificate expiry records found in certbot output"
+        return 0
+    fi
+
+    while IFS=$'\t' read -r certificate_name days_remaining; do
+        [[ -n "$certificate_name" && "$days_remaining" =~ ^[0-9]+$ ]] || continue
+        log "certificate ${certificate_name} has ${days_remaining} days remaining"
+        if (( days_remaining < certificate_expiry_threshold )); then
+            log "certificate ${certificate_name} is below the ${certificate_expiry_threshold}-day renewal threshold"
+            if [[ "$notify_feishu_enabled" == "True" || "$notify_feishu_enabled" == "true" ]]; then
+                notify_feishu "$(format_certificate_alert "$certificate_name" "$days_remaining")"
+            else
+                log "feishu notification is disabled, skip certificate renewal notification"
+            fi
+        fi
+    done <<< "$certificate_records"
+}
+
+check_certificate_expiry
 
 if ! df_output=$(df -hP / 2>&1); then
     log "ERROR! failed to query root filesystem usage: ${df_output}"
