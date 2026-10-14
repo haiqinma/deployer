@@ -26,7 +26,7 @@ chmod 600 .env
 - 运行方式：通常配置为周期性任务执行
 - 输入参数：无
 - 配置文件：`.env`，主要使用 `DISK_USAGE_THRESHOLD`（大于 0 且小于 100 才启用）、`SSL_VALID_THRESHOLD`（大于 0 才启用，自动限制在 3 至 90 天）、`NOTIFY_FROM`
-- 作用：检查根分区 `/` 使用率，超过有效磁盘阈值时发送飞书磁盘空间告警；存在有效证书阈值且 `/usr/local/bin/certbot` 可用时，检查证书有效期并发送续签提醒。主机监控告警不受 `NOTIFY_FEISHU` 控制
+- 作用：检查根分区 `/` 使用率，超过有效磁盘阈值时发送飞书磁盘空间告警；证书监控启用时依次检查 `/opt/certbot/bin/certbot`、`/usr/local/bin/certbot`、`/usr/bin/certbot`，找到后检查证书有效期，临近到期或 certbot 标记为已过期时发送续签提醒；以上主机监控告警均使用 `default_notify` 场景，候选命令均不可用时也通过该场景发送 certbot 工具失效提醒。主机监控告警不受 `NOTIFY_FEISHU` 控制
 - 日志文件：`/opt/logs/monitor-host.log`
 
 ### `cleanup-item.py`
