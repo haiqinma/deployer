@@ -15,12 +15,12 @@ fi
 init_log_file "monitor-host.log"
 
 env_file="${script_dir}/.env"
-feishu_scene="monitor_service"
+feishu_scene="default_notify"
 notify_from=""
 disk_usage_threshold=""
 disk_monitor_enabled="False"
 disk_usage_threshold_value=0
-certbot_command="${CERTBOT_COMMAND:-/usr/local/bin/certbot}"
+certbot_command=""
 certificate_monitor_enabled="False"
 certificate_expiry_threshold=0
 
@@ -67,15 +67,16 @@ if [[ -z "$notify_from" ]]; then
 fi
 
 notify_feishu() {
-    local message=$1
+    local scene=$1
+    local message=$2
 
     if ! declare -F send_feishu_message >/dev/null 2>&1; then
         log "WARN! feishu notify helper is missing, skip notification"
         return 0
     fi
 
-    if ! send_feishu_message "$feishu_scene" "$message" >> "$LOGFILE" 2>&1; then
-        log "WARN! failed to send feishu notification"
+    if ! send_feishu_message "$scene" "$message" >> "$LOGFILE" 2>&1; then
+        log "WARN! failed to send feishu notification: scene=${scene}"
     fi
 }
 
@@ -117,6 +118,12 @@ EOF
 format_certificate_alert() {
     local certificate_name=$1
     local days_remaining=$2
+    local certificate_status=${3:-valid}
+    local validity_details="- 剩余有效期：${days_remaining} 天"
+
+    if [[ "$certificate_status" == "expired" ]]; then
+        validity_details="- 证书状态：已过期"
+    fi
 
     cat <<EOF
 【域名证书通知】域名证书续签提醒
@@ -125,17 +132,98 @@ format_certificate_alert() {
 
 通知内容：
 - 域名信息：${certificate_name}
-- 剩余有效期：${days_remaining} 天
+${validity_details}
 - 域名节点：${notify_from}
 
 建议操作：
-1. 登录 ${notify_from} 执行/usr/local/bin/certbot renew --quiet 进行证书续签
+1. 登录 ${notify_from} 执行${certbot_command} renew --quiet 进行证书续签
 EOF
 }
 
+format_certbot_missing_alert() {
+    cat <<EOF
+【域名证书通知】certbot工具失效提醒
+
+发现时间：$(date '+%Y-%m-%d %H:%M')
+
+通知内容：
+- 域名节点：${notify_from}
+
+建议操作：
+1. 登录 ${notify_from} 检查certbot是否安装并确认安装路径是否正确
+EOF
+}
+
+find_certbot_command() {
+    local candidate
+    for candidate in "$@"; do
+        if [[ -f "$candidate" && -x "$candidate" ]]; then
+            certbot_command=$candidate
+            return 0
+        fi
+    done
+
+    certbot_command=""
+    return 1
+}
+
+parse_certificate_records() {
+    awk '
+        /Certificate Name:/ {
+            name = $0
+            sub(/^.*Certificate Name:[[:space:]]*/, "", name)
+            sub(/[[:space:]]*$/, "", name)
+            next
+        }
+        {
+            if (name == "") {
+                next
+            }
+            if ($0 ~ /\(INVALID:[[:space:]]*EXPIRED\)/) {
+                print name "\t0\texpired"
+                name = ""
+                next
+            }
+            if ($0 ~ /\(VALID:[[:space:]]*[0-9]+[[:space:]]+days\)/) {
+                valid = $0
+                sub(/^.*\(VALID:[[:space:]]*/, "", valid)
+                sub(/[[:space:]]+days.*$/, "", valid)
+                if (valid ~ /^[0-9]+$/) {
+                    print name "\t" valid "\tvalid"
+                    name = ""
+                }
+            }
+        }
+    '
+}
+
+notify_certificate_records() {
+    local certificate_records=$1
+    local certificate_name days_remaining certificate_status
+
+    while IFS=$'\t' read -r certificate_name days_remaining certificate_status; do
+        [[ -n "$certificate_name" ]] || continue
+        if [[ "$certificate_status" == "expired" ]]; then
+            log "certificate ${certificate_name} is expired"
+            notify_feishu "$feishu_scene" "$(format_certificate_alert "$certificate_name" "$days_remaining" "$certificate_status")"
+            continue
+        fi
+        [[ "$days_remaining" =~ ^[0-9]+$ ]] || continue
+        log "certificate ${certificate_name} has ${days_remaining} days remaining"
+        if (( days_remaining < certificate_expiry_threshold )); then
+            log "certificate ${certificate_name} is below the ${certificate_expiry_threshold}-day renewal threshold"
+            notify_feishu "$feishu_scene" "$(format_certificate_alert "$certificate_name" "$days_remaining" "$certificate_status")"
+        fi
+    done <<< "$certificate_records"
+}
+
 check_certificate_expiry() {
-    if [[ ! -x "$certbot_command" ]]; then
-        log "certbot is not installed at ${certbot_command}, skip certificate expiry check"
+    if ! find_certbot_command \
+        /opt/certbot/bin/certbot \
+        /usr/local/bin/certbot \
+        /usr/bin/certbot; then
+        log "WARN! certbot is not available in supported paths, sending tool failure notification"
+        notify_feishu "$feishu_scene" "$(format_certbot_missing_alert)"
         return 0
     fi
 
@@ -146,22 +234,7 @@ check_certificate_expiry() {
     fi
 
     local certificate_records
-    if ! certificate_records=$(printf '%s\n' "$certificates_output" | awk '
-        /Certificate Name:/ {
-            name = $0
-            sub(/^.*Certificate Name:[[:space:]]*/, "", name)
-            sub(/[[:space:]]*$/, "", name)
-        }
-        /VALID:/ {
-            valid = $0
-            sub(/^.*VALID:[[:space:]]*/, "", valid)
-            sub(/[^0-9].*$/, "", valid)
-            if (name != "" && valid ~ /^[0-9]+$/) {
-                print name "\t" valid
-                name = ""
-            }
-        }
-    '); then
+    if ! certificate_records=$(printf '%s\n' "$certificates_output" | parse_certificate_records); then
         log "WARN! failed to parse certbot certificate output"
         return 0
     fi
@@ -171,14 +244,7 @@ check_certificate_expiry() {
         return 0
     fi
 
-    while IFS=$'\t' read -r certificate_name days_remaining; do
-        [[ -n "$certificate_name" && "$days_remaining" =~ ^[0-9]+$ ]] || continue
-        log "certificate ${certificate_name} has ${days_remaining} days remaining"
-        if (( days_remaining < certificate_expiry_threshold )); then
-            log "certificate ${certificate_name} is below the ${certificate_expiry_threshold}-day renewal threshold"
-            notify_feishu "$(format_certificate_alert "$certificate_name" "$days_remaining")"
-        fi
-    done <<< "$certificate_records"
+    notify_certificate_records "$certificate_records"
 }
 
 if [[ "$certificate_monitor_enabled" == "True" ]]; then
@@ -220,6 +286,6 @@ fi
 
 log "root filesystem usage exceeds the alert threshold, sending notification"
 message=$(format_disk_alert "$root_filesystem" "$root_size" "$root_used" "$root_available" "$root_usage")
-notify_feishu "$message"
+notify_feishu "$feishu_scene" "$message"
 
 exit 0
