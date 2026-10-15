@@ -13,6 +13,7 @@ import requests
 
 ENV_FILE = Path(__file__).resolve().parent / ".env"
 SUPPORTED_SCENES = {
+    "default_notify",
     "create_package",
     "upgrade_service",
     "monitor_service",

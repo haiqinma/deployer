@@ -1,6 +1,6 @@
 ## 飞书通知脚本
 
-复制 `.env.template` 为 `.env`。每个场景使用 `<场景大写>_WEBHOOK_URL`、`<场景大写>_SECRET`、`<场景大写>_PREFIX`，当前脚本场景包括 `create_package`、`upgrade_service`、`monitor_service`、`release_notes`、`backup_config`、`backup_database` 和 `account_billing`。
+复制 `.env.template` 为 `.env`。每个场景使用 `<场景大写>_WEBHOOK_URL`、`<场景大写>_SECRET`、`<场景大写>_PREFIX`，当前脚本场景包括 `default_notify`、`create_package`、`upgrade_service`、`monitor_service`、`release_notes`、`backup_config`、`backup_database` 和 `account_billing`。
 
 ### `common.sh`
 
