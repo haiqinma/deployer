@@ -59,6 +59,21 @@ acquire_upgrade_lock() {
 
 acquire_upgrade_lock
 
+# A service launched during an upgrade inherits the shell's open file
+# descriptors unless they are closed explicitly. Keep an EXIT cleanup as a
+# safety net so an inherited descriptor cannot retain the upgrade lock after
+# this script has finished.
+release_upgrade_lock() {
+    local exit_status=$?
+
+    flock -u 200 || true
+    exec 200>&- || true
+
+    return "$exit_status"
+}
+
+trap release_upgrade_lock EXIT
+
 if [[ -f "$env_file" ]]; then
     # shellcheck disable=SC1090
     set -a
@@ -389,7 +404,11 @@ load_webdav_env "$env_file" || exit 1
 resolve_webdav_dir_url_from_env
 mkdir -p "$package_root" "$deploy_root"
 log "webdav remote dir: ${WEBDAV_DIR_URL}/"
-log "webdav access key: ${WEBDAV_PACKAGE_AK:-<empty>}"
+if [[ -n "${WEBDAV_PACKAGE_AK:-}" ]]; then
+    log "webdav access key: configured"
+else
+    log "webdav access key: <empty>"
+fi
 
 HEALTH_CHECK_INITIAL_WAIT_SECONDS=$(trim "${HEALTH_CHECK_INITIAL_WAIT_SECONDS:-0}")
 WAIT_SECONDS=$(trim "${WAIT_SECONDS:-2}")
@@ -503,7 +522,7 @@ for module_name in "${MODULES[@]}"; do
     if verify_algorithm_enabled; then
         verify_enabled=0
         target_verify_filename="${target_filename}.${file_verify}"
-        if ! bash "$transfer_script" download "$target_verify_filename" >> "$LOGFILE" 2>&1; then
+        if ! bash "$transfer_script" download "$target_verify_filename" 200>&- >> "$LOGFILE" 2>&1; then
             log "ERROR! failed to download verify file: ${target_verify_filename}"
             notify_alert "$(format_error_notice \
                 "${module_name}/${notify_type}" \
@@ -518,7 +537,7 @@ for module_name in "${MODULES[@]}"; do
         fi
     fi
 
-    if ! bash "$transfer_script" download "$target_filename" >> "$LOGFILE" 2>&1; then
+    if ! bash "$transfer_script" download "$target_filename" 200>&- >> "$LOGFILE" 2>&1; then
         log "ERROR! failed to download package: ${target_filename}"
         notify_alert "$(format_error_notice \
             "${module_name}/${notify_type}" \
@@ -632,7 +651,7 @@ for module_name in "${MODULES[@]}"; do
             continue
         }
         log "stop current ${module_name}: cd ${current_dir} && scripts/starter.sh stop"
-        if ! (cd "$current_dir" && bash scripts/starter.sh stop >> "$LOGFILE" 2>&1); then
+        if ! (cd "$current_dir" && bash scripts/starter.sh stop 200>&- >> "$LOGFILE" 2>&1); then
             log "ERROR! failed to stop current ${module_name} service"
             overall_status=1
             continue
@@ -675,8 +694,11 @@ for module_name in "${MODULES[@]}"; do
 
     if [[ "$service_upgrade_enabled" -eq 1 ]]; then
         log "start target ${module_name}: cd ${EXTRACTED_DIR} && scripts/starter.sh"
-        if ! (cd "$EXTRACTED_DIR" && bash scripts/starter.sh) 2>&1 | tee -a "$LOGFILE" </dev/null; then
-            log "ERROR! failed to start target ${module_name} service"
+        if (cd "$EXTRACTED_DIR" && bash scripts/starter.sh </dev/null 200>&-) >> "$LOGFILE" 2>&1; then
+            :
+        else
+            start_status=$?
+            log "ERROR! failed to start target ${module_name} service with exit code ${start_status}"
             overall_status=1
             continue
         fi
@@ -700,7 +722,7 @@ for module_name in "${MODULES[@]}"; do
                 fi
 
                 log "health check target ${module_name} attempt ${attempt}/${max_health_check_attempts}: cd ${EXTRACTED_DIR} && scripts/health-check.sh --level all"
-                if (cd "$EXTRACTED_DIR" && bash scripts/health-check.sh --level all >> "$LOGFILE" 2>&1); then
+                if (cd "$EXTRACTED_DIR" && bash scripts/health-check.sh --level all 200>&- >> "$LOGFILE" 2>&1); then
                     health_check_status=0
                     break
                 else
@@ -758,10 +780,10 @@ for module_name in "${MODULES[@]}"; do
         log "无法进行备份和上传操作，配置备份脚本不存在：${config_backup_script}"
     else
         log "config backup： ${module_name}"
-        if (cd "$active_module_dir" && bash scripts/config_backup.sh >> "$LOGFILE" 2>&1); then
+        if (cd "$active_module_dir" && bash scripts/config_backup.sh 200>&- >> "$LOGFILE" 2>&1); then
             sleep 5
             log "config backup upload： ${module_name}"
-            if ! bash "${script_dir}/../backup-config/upload_config_backup.sh" "${module_name}" >> "$LOGFILE" 2>&1; then
+            if ! bash "${script_dir}/../backup-config/upload_config_backup.sh" "${module_name}" 200>&- >> "$LOGFILE" 2>&1; then
                 log "ERROR! config backup upload failed: ${module_name}"
             fi
         else

@@ -53,7 +53,7 @@ chmod 600 .env
 
 ```bash
 cd /root/code/deployer/operator/upgrade
-bash compile_packages.sh
+./compile_packages.sh
 ```
 
 编译脚本会把模块仓库同步到 `origin/main`，并可能执行
@@ -69,8 +69,8 @@ bash compile_packages.sh
 第二个参数只能是文件名，不能包含路径；上传文件必须位于 `/opt/package`：
 
 ```bash
-bash transfer_packages.sh upload chat-v1.2.3-a1b2c3d.tar.gz
-bash transfer_packages.sh download chat-v1.2.3-a1b2c3d.tar.gz
+./transfer_packages.sh upload chat-v1.2.3-a1b2c3d.tar.gz
+./transfer_packages.sh download chat-v1.2.3-a1b2c3d.tar.gz
 ```
 
 ### 执行升级
@@ -78,7 +78,7 @@ bash transfer_packages.sh download chat-v1.2.3-a1b2c3d.tar.gz
 `upgrade.sh` 不接受位置参数，按 `modules.conf` 中的顺序处理模块：
 
 ```bash
-bash upgrade.sh
+./upgrade.sh
 ```
 
 远程版本只有严格高于本地版本时才会升级。某个模块失败后脚本会继续处理后续模块，
@@ -87,6 +87,10 @@ bash upgrade.sh
 ```bash
 less /opt/logs/upgrade.log
 ```
+
+三个入口脚本都带有可执行权限和 Bash shebang，因此也可以继续使用
+`bash ./upgrade.sh`、`bash ./compile_packages.sh` 或 `bash ./transfer_packages.sh`。推荐使用
+`./upgrade.sh`，以便及早发现文件权限或 shebang 配置问题。
 
 ## 项目升级钩子
 
@@ -139,6 +143,24 @@ bash scripts/health-check.sh --level all
 `upgrade.sh` 不执行自动降级。失败后先查看日志和当前软链接，再决定重试或手动回退；
 不要仅以进程存在判断升级成功。如果失败发生在目标服务已启动但软链接更新之前，
 实际运行目录可能已经是目标目录，而 `/opt/deploy/<module>` 仍指向旧目录。
+
+### 重试失败的升级
+
+修复故障原因后，可以直接再次执行：
+
+```bash
+cd /root/code/deployer/operator/upgrade
+./upgrade.sh
+```
+
+升级锁只在单次 `upgrade.sh` 进程存活期间持有，并会在成功或失败退出时释放；因此上一次
+执行返回非零后不需要删除锁文件，也不应通过删除锁文件强行重试。若日志仍提示已有任务在运行，
+应先确认该进程确实仍在执行，再等待其结束。
+
+重试会复用已下载、校验通过且已解压的同一版本制品，并从该模块的 `prepare` 阶段重新执行。
+在“新服务已启动但软链接尚未更新”的中间状态下，目标版本的启动脚本应识别到已有进程，随后
+继续健康检查和软链接切换。项目级 `scripts/upgrade.sh` 的四个阶段必须保持可重入：配置迁移
+不应重复破坏数据，数据库迁移应使用自身的幂等机制。
 
 回退时需要使用实际存在的旧版本目录，按项目钩子约定执行必要的定制动作，再完成
 停止旧目录服务、配置复制、启动旧版本、健康检查和软链接更新。`warehouse` 前端
