@@ -29,7 +29,7 @@
   升级操作说明（含打包上传、升级执行、模块差异、验证与回退）
 
 - [LOGGING.md](./LOGGING.md)  
-  后台服务日志规范（含 `api.log`、`<service-name>.log`、`error.log` 的职责、字段与示例）
+  社区后台服务日志规范（含 `ERROR`/`FATAL` 结构化错误事件契约、根因分析字段、日志文件职责与示例）
 
 - [API_SPECIFICATION.md](./API_SPECIFICATION.md)  
   后端接口规范（含 `public`、`admin`、`internal` 分类、路径规则与兼容要求）
