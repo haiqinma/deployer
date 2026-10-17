@@ -38,6 +38,7 @@
 - [specification/DESIGN_PROPOSAL_TEMPLATE.md](./specification/DESIGN_PROPOSAL_TEMPLATE.md)
 - [specification/GITHUB_FORK.md](./specification/GITHUB_FORK.md)
 - [specification/GITHUB_PULL_REQUEST.md](./specification/GITHUB_PULL_REQUEST.md)
+- [specification/LOGGING.md](./specification/LOGGING.md)
 
 推荐流程：
 
