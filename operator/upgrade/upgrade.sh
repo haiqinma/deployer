@@ -694,7 +694,11 @@ for module_name in "${MODULES[@]}"; do
 
     if [[ "$service_upgrade_enabled" -eq 1 ]]; then
         log "start target ${module_name}: cd ${EXTRACTED_DIR} && scripts/starter.sh"
-        if (cd "$EXTRACTED_DIR" && bash scripts/starter.sh </dev/null 200>&-) >> "$LOGFILE" 2>&1; then
+        # Keep stdin attached to the caller so project starters can securely
+        # request interactive input (for example, node's secrets password).
+        # tee mirrors output to the terminal and the upgrade log, while
+        # closing fd 200 prevents the service from inheriting the upgrade lock.
+        if (cd "$EXTRACTED_DIR" && bash scripts/starter.sh 200>&-) 2>&1 | tee -a "$LOGFILE"; then
             :
         else
             start_status=$?

@@ -182,7 +182,9 @@ bash transfer_packages.sh download chat-v1.2.3-a1b2c3d.tar.gz
 10. 调用目标安装包的 `scripts/upgrade.sh prepare <current-dir> <target-dir>`；退出码 `10` 表示只执行项目定制动作，不执行通用服务切换。
 11. 调用当前版本 `scripts/starter.sh stop`；只有脚本确认旧进程已退出后，才调用 `scripts/upgrade.sh copy-config <current-dir> <target-dir>` 迁移项目配置。
 12. 调用 `scripts/upgrade.sh post-copy <current-dir> <target-dir>` 执行静态资源发布或其他项目定制动作。
-13. 执行目标版本的 `scripts/starter.sh` 启动服务；启动前必须确认旧服务已经退出。
+13. 执行目标版本的 `scripts/starter.sh` 启动服务；启动前必须确认旧服务已经退出。升级器必须保留
+    调用方的标准输入，使需要密码等交互输入的项目启动脚本可以从前台终端读取，同时将启动输出
+    显示到终端并写入升级日志。非交互任务必须在执行前通过项目认可的安全方式准备所需凭据。
 14. 如果目标版本存在 `scripts/health-check.sh`，立即执行第一次健康检查，失败后按 `HEALTH_CHECK_INITIAL_WAIT_SECONDS`、`WAIT_SECONDS` 和 `RETRY_TIMES` 配置重试。
 15. 执行 `scripts/upgrade.sh finalize <current-dir> <target-dir>`，然后更新 `/opt/deploy/<module>` 软链接。
 16. 发送升级完成或异常通知。
@@ -210,7 +212,8 @@ bash transfer_packages.sh download chat-v1.2.3-a1b2c3d.tar.gz
    停止返回非零时，升级器必须停止该模块后续流程，不得复制配置或启动目标服务。
 5. 调用目标版本的 `scripts/upgrade.sh copy-config <current-dir> <target-dir>` 将配置复制到目标版本。
 6. 调用项目脚本的 `post-copy` 阶段。
-7. 启动目标服务：`bash scripts/starter.sh`。如果启动失败，不得把端口监听或旧 PID 残留当作成功。
+7. 启动目标服务：`bash scripts/starter.sh`。调用时必须保留标准输入供项目脚本进行必要的交互提示，
+   并关闭升级锁文件描述符，防止后台服务继承升级锁。如果启动失败，不得把端口监听或旧 PID 残留当作成功。
 8. 如果目标版本存在 `scripts/health-check.sh`，立即执行第一次 `bash scripts/health-check.sh --level all`；失败后按 `WAIT_SECONDS` 间隔重试。需要为慢启动服务预留启动时间时，使用 `HEALTH_CHECK_INITIAL_WAIT_SECONDS`，不要依赖固定长时间等待。
 9. 调用项目脚本的 `finalize` 阶段。
 

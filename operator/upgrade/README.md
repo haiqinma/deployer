@@ -92,6 +92,10 @@ less /opt/logs/upgrade.log
 `bash ./upgrade.sh`、`bash ./compile_packages.sh` 或 `bash ./transfer_packages.sh`。推荐使用
 `./upgrade.sh`，以便及早发现文件权限或 shebang 配置问题。
 
+`upgrade.sh` 启动目标服务时保留当前终端的标准输入，并同时把启动输出显示在终端和写入
+`/opt/logs/upgrade.log`。如果模块启动脚本需要交互输入（例如 node 的 secrets vault 密码），
+必须从前台交互终端执行升级；定时任务或重定向了标准输入的非交互调用无法完成这类提示。
+
 ## 项目升级钩子
 
 纳入统一升级流程的每个安装包必须包含可执行的 `scripts/upgrade.sh`，接口固定为：
@@ -119,7 +123,9 @@ bash scripts/upgrade.sh <prepare|copy-config|post-copy|finalize> <current-dir> <
 当前项目的定制行为如下：
 
 - `chat`、`project`、`router`：在 `copy-config` 复制环境或 YAML 配置。
-- `node`：在 `copy-config` 迁移 `config.js` 和加密 secrets vault；不复制 `secrets.passwordFile`，密码文件应使用版本目录之外的共享路径。
+- `node`：在 `copy-config` 迁移 `config.js` 和加密 secrets vault，但不复制 `secrets.passwordFile`。
+  手动升级时，如果目标环境没有有效密码文件，目标 `starter.sh` 会在当前终端安全提示输入密码；
+  密码不会回显，也不会写入升级日志。无人值守升级必须由 node 自身提供安全的非交互凭据来源。
 - `billing`：在 `copy-config` 复制 `config.yaml`。
 - `social`：在 `copy-config` 复制 `config/`，在 `post-copy` 发布 `web/dist` 并重启 Nginx。
 - `warehouse`：在 `copy-config` 复制 `config.yaml`；`all` 同时执行后端通用升级和前端发布，`backend` 只升级后端，
